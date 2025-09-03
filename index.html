@@ -330,6 +330,13 @@
         const fab = document.getElementById('fab');
         const modalContainer = document.getElementById('modal-container');
         
+        // --- FUNZIONE UTILITY DI SANIFICAZIONE ---
+        function sanitizeForId(text) {
+            if (!text) return '';
+            // Sostituisce spazi e underscore con trattini, poi rimuove tutti i caratteri non alfanumerici o trattini
+            return text.replace(/[\s_]/g, '-').replace(/[^a-zA-Z0-9-]/g, '');
+        }
+
         // --- INIZIO FUNZIONALITÀ PRINCIPALI ---
 
         function navigate(page) {
@@ -1038,10 +1045,11 @@
                                  let sets = [];
                                  try { sets = JSON.parse(historyItem?.params?.[paramName]?.value || '[]'); } catch(e){}
                                  if (sets.length === 0) sets.push({}); // Aggiungi una riga vuota se non ci sono dati
+                                 const paramId = sanitizeForId(paramName);
                                  return `
                                     <div class="p-2 border rounded" data-param-name="${paramName}">
                                         <label class="font-medium">${paramName}</label>
-                                        <div class="space-y-2 mt-1" id="sets-for-${paramName.replace(/\s/g,'-')}">
+                                        <div class="space-y-2 mt-1" id="sets-for-${paramId}">
                                             ${sets.map((set, index) => `
                                                 <div class="flex gap-1.5 items-center" data-set-index="${index}">
                                                     <input type="text" placeholder="" class="input-field !p-2 flex-1" value="${set.val1 || ''}">
@@ -1054,7 +1062,7 @@
                                                 </div>
                                             `).join('')}
                                         </div>
-                                        <button onclick="window.app.addParamSet('${paramName.replace(/\s/g,'-')}')" class="material-button-outlined text-xs px-3 py-1 mt-2">Aggiungi Riga</button>
+                                        <button onclick="window.app.addParamSet('${paramId}')" class="material-button-outlined text-xs px-3 py-1 mt-2">Aggiungi Riga</button>
                                     </div>`;
                                 }).join('') : '<p class="text-gray-500 text-sm">Nessun parametro da tracciare per questo esercizio. Modifica l\'esercizio per aggiungerne.</p>'}
                         </div>
@@ -1389,7 +1397,7 @@
 
             (exercise.parameters || []).forEach(paramName => {
                 const sets = [];
-                const paramId = paramName.replace(/\s/g, '-');
+                const paramId = sanitizeForId(paramName);
                 document.querySelectorAll(`#sets-for-${paramId} > div`).forEach(setDiv => {
                     const inputs = setDiv.querySelectorAll('input');
                     const set = {
