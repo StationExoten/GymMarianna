@@ -1,0 +1,1733 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Workout Tracker</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js/dist/chart.umd.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+    <style>
+        /* Stile base Material 3 */
+        body {
+            font-family: 'Roboto', sans-serif;
+            background-color: #f3f3f3; /* Surface Container Low */
+            color: #1c1b1f; /* On Surface */
+        }
+        .material-card {
+            background-color: #fffbfe; /* Surface */
+            border-radius: 12px;
+            box-shadow: 0 1px 2px 0 rgba(0,0,0,0.1);
+            transition: box-shadow 0.2s ease-in-out;
+        }
+        .material-card:hover {
+            box-shadow: 0 4px 8px 0 rgba(0,0,0,0.1);
+        }
+        .material-button {
+            border-radius: 20px;
+            padding: 10px 24px;
+            font-weight: 500;
+            text-transform: none;
+            transition: background-color 0.2s ease-in-out;
+            cursor: pointer;
+        }
+        .material-button-filled {
+            background-color: #6750A4; /* Primary */
+            color: #ffffff; /* On Primary */
+        }
+        .material-button-filled:hover:not(:disabled) {
+            background-color: #5a4293;
+        }
+        .material-button-outlined {
+            border: 1px solid #79747E; /* Outline */
+            color: #6750A4; /* Primary */
+        }
+        .material-button-outlined:hover:not(:disabled) {
+            background-color: rgba(103, 80, 164, 0.08);
+        }
+         .material-button-text {
+            color: #6750A4; /* Primary */
+        }
+        .material-button-text:hover:not(:disabled) {
+            background-color: rgba(103, 80, 164, 0.08);
+        }
+        .fab {
+            background-color: #f2daff; /* Primary Container */
+            color: #21005d; /* On Primary Container */
+            width: 56px;
+            height: 56px;
+            border-radius: 16px;
+            box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2);
+        }
+        .input-field {
+            background-color: #f3f3f3; /* Surface Container Highest */
+            border-radius: 4px;
+            border: 1px solid #79747E; /* On Surface Variant */
+            padding: 16px;
+            width: 100%;
+        }
+        .input-field:focus {
+            outline: none;
+            border: 2px solid #6750A4; /* Primary */
+        }
+        .modal-backdrop {
+            background-color: rgba(0,0,0,0.32);
+        }
+        .modal-content {
+            background-color: #fffbfe; /* Surface */
+            width: 90%;
+            max-width: 600px;
+            max-height: 90vh;
+            border-radius: 28px;
+        }
+        .nav-item {
+            border-bottom: 2px solid transparent;
+            transition: border-color 0.2s ease-in-out, color 0.2s ease-in-out;
+        }
+        .nav-item.active {
+            border-color: #6750A4; /* Primary */
+            color: #6750A4;
+        }
+        .color-dot {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            cursor: pointer;
+            border: 2px solid transparent;
+        }
+        .color-dot.selected {
+            border-color: #6750A4;
+        }
+        .tab-button {
+            padding: 8px 16px;
+            border-bottom: 2px solid transparent;
+            cursor: pointer;
+            font-weight: 500;
+        }
+        .tab-button.active {
+            border-color: #6750A4;
+            color: #6750A4;
+        }
+        .sheet-item.deactivated {
+            opacity: 0.5;
+            background-color: #e0e0e0;
+        }
+
+        /* Scrollbar styles */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #ccc;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #aaa;
+        }
+        .blinking {
+            animation: blinker 1s linear infinite;
+        }
+        @keyframes blinker {
+            50% {
+                opacity: 0.2;
+            }
+        }
+        .toast {
+            transition: opacity 0.3s, transform 0.3s;
+        }
+    </style>
+</head>
+<body class="antialiased">
+
+    <!-- Header e Navigazione -->
+    <header class="bg-white/80 backdrop-blur-md sticky top-0 z-40 shadow-sm">
+        <div class="container mx-auto px-4">
+            <div class="flex justify-between items-center py-4">
+                <h1 class="text-xl font-bold text-[#1d192b]">Workout<span class="text-[#6750A4]">Tracker</span></h1>
+                <nav class="hidden md:flex space-x-4">
+                    <button id="nav-sheets" class="nav-item py-2 px-3 text-gray-600 font-medium">Scheda Allenamento</button>
+                    <button id="nav-history" class="nav-item py-2 px-3 text-gray-600 font-medium">Storico e Progressi</button>
+                    <button id="nav-db" class="nav-item py-2 px-3 text-gray-600 font-medium">Database Esercizi</button>
+                </nav>
+            </div>
+        </div>
+    </header>
+    
+    <!-- Navigazione Mobile in basso -->
+    <nav class="md:hidden fixed bottom-0 left-0 right-0 bg-white shadow-t z-40 border-t">
+        <div class="flex justify-around">
+            <button id="nav-mobile-sheets" class="flex flex-col items-center justify-center p-2 text-gray-500 nav-item w-full">
+                <span class="material-icons">assignment</span>
+                <span class="text-xs">Schede</span>
+            </button>
+            <button id="nav-mobile-history" class="flex flex-col items-center justify-center p-2 text-gray-500 nav-item w-full">
+                <span class="material-icons">timeline</span>
+                <span class="text-xs">Storico</span>
+            </button>
+            <button id="nav-mobile-db" class="flex flex-col items-center justify-center p-2 text-gray-500 nav-item w-full">
+                <span class="material-icons">fitness_center</span>
+                <span class="text-xs">Esercizi</span>
+            </button>
+        </div>
+    </nav>
+
+    <main class="container mx-auto p-4 pb-20 md:pb-4">
+        <!-- Pagina Scheda Allenamento -->
+        <div id="page-sheets" class="hidden">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-2xl font-medium">Schede Allenamento</h2>
+            </div>
+            <div class="flex flex-col md:flex-row gap-2 mb-4">
+                 <input type="text" id="search-sheets" placeholder="Cerca per nome scheda, esercizio, categoria..." class="input-field flex-grow">
+            </div>
+            <div id="sheets-list" class="space-y-4"></div>
+        </div>
+
+        <!-- Pagina Storico e Progressi -->
+        <div id="page-history" class="hidden">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-2xl font-medium">Storico e Progressi</h2>
+            </div>
+            <div class="flex flex-col md:flex-row gap-2 mb-4">
+                <input type="text" id="search-history" placeholder="Cerca per nome esercizio o commento..." class="input-field flex-grow">
+                <input type="date" id="search-history-date" class="input-field">
+            </div>
+            <div id="history-list" class="space-y-6"></div>
+        </div>
+
+        <!-- Pagina Database Esercizi -->
+        <div id="page-db" class="hidden">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-2xl font-medium">Database Esercizi</h2>
+                <button id="add-category-btn" class="material-button material-button-outlined flex items-center gap-2">
+                    <span class="material-icons">add</span> Categoria
+                </button>
+            </div>
+             <div class="flex flex-col md:flex-row gap-2 mb-4">
+                <input type="text" id="search-exercises" placeholder="Cerca esercizio..." class="input-field flex-grow">
+                <select id="sort-exercises" class="input-field">
+                    <option value="name_asc">Ordina per Nome (A-Z)</option>
+                    <option value="name_desc">Ordina per Nome (Z-A)</option>
+                    <option value="category">Ordina per Categoria</option>
+                    <option value="bodypart">Ordina per Zona Corporea</option>
+                    <option value="updatedAt_desc">Ordina per Ultima Modifica (più recente)</option>
+                    <option value="createdAt_desc">Ordina per Data Creazione (più recente)</option>
+                </select>
+            </div>
+            <div id="categories-list" class="space-y-4"></div>
+        </div>
+    </main>
+
+    <!-- Pulsante Flottante (FAB) -->
+    <button id="fab" class="fab fixed bottom-24 right-4 md:bottom-8 md:right-8 flex items-center justify-center z-30 transition-transform transform hover:scale-110">
+        <span class="material-icons">add</span>
+    </button>
+    
+    <!-- Contenitore Modals -->
+    <div id="modal-container" class="fixed inset-0 z-50 flex items-center justify-center modal-backdrop hidden">
+        <!-- Contenuto del modal iniettato da JS -->
+    </div>
+
+    <!-- Modale di Conferma -->
+    <div id="confirm-modal" class="fixed inset-0 z-[60] flex items-center justify-center modal-backdrop hidden">
+        <div class="modal-content p-6">
+            <h3 id="confirm-title" class="text-xl font-medium mb-4">Conferma</h3>
+            <p id="confirm-message" class="mb-6 text-gray-600">Sei sicuro di voler procedere?</p>
+            <div class="flex justify-end gap-2">
+                <button id="confirm-cancel" class="material-button material-button-text">Annulla</button>
+                <button id="confirm-ok" class="material-button material-button-filled bg-red-600 hover:bg-red-700">Conferma</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Contenitore Toast -->
+    <div id="toast-container" class="fixed bottom-24 md:bottom-8 right-1/2 translate-x-1/2 z-[70] space-y-2"></div>
+
+
+    <script type="module">
+        // Importa le funzioni di Firebase
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+        import { getFirestore, collection, addDoc, getDocs, doc, setDoc, deleteDoc, onSnapshot, query, where, orderBy, serverTimestamp, writeBatch, Timestamp, updateDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+        // Configurazione di Firebase (utilizzando variabili globali fornite dall'ambiente)
+        const firebaseConfig = typeof __firebase_config !== 'undefined'
+            ? JSON.parse(__firebase_config)
+            : { apiKey: "INVALID_KEY", authDomain: "...", projectId: "...", appId: "..." }; // Fallback per ambienti locali
+
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+
+        // Inizializza Firebase
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const auth = getAuth(app);
+        
+        // Stato dell'applicazione
+        const state = {
+            userId: null,
+            currentPage: 'sheets',
+            categories: [],
+            exercises: [],
+            history: [],
+            sheets: [],
+            sheetItems: {},
+            listeners: {},
+            chartInstance: null,
+            timers: {}
+        };
+        
+        const ZONES = ["Braccia", "Spalle", "Dorso", "Petto", "Addome", "Glutei", "Gambe", "Cardio"];
+        const COLORS = [
+            '#ef4444', '#f97316', '#f59e0b', '#84cc16', '#22c55e', 
+            '#10b981', '#06b6d4', '#3b82f6', '#8b5cf6', '#d946ef'
+        ];
+
+        // Elementi DOM
+        const pages = {
+            sheets: document.getElementById('page-sheets'),
+            history: document.getElementById('page-history'),
+            db: document.getElementById('page-db'),
+        };
+        const navs = {
+            sheets: [document.getElementById('nav-sheets'), document.getElementById('nav-mobile-sheets')],
+            history: [document.getElementById('nav-history'), document.getElementById('nav-mobile-history')],
+            db: [document.getElementById('nav-db'), document.getElementById('nav-mobile-db')],
+        };
+        const fab = document.getElementById('fab');
+        const modalContainer = document.getElementById('modal-container');
+        
+        // --- INIZIO FUNZIONALITÀ PRINCIPALI ---
+
+        function navigate(page) {
+            state.currentPage = page;
+            Object.keys(pages).forEach(p => {
+                pages[p].classList.toggle('hidden', p !== page);
+                navs[p].forEach(nav => nav.classList.toggle('active', p === page));
+            });
+            updateFab();
+            render();
+        }
+
+        function updateFab() {
+            fab.onclick = null;
+            let icon = 'add';
+            switch (state.currentPage) {
+                case 'sheets':
+                    fab.title = 'Aggiungi Scheda';
+                    fab.onclick = () => openSheetModal();
+                    icon = 'assignment_add';
+                    break;
+                case 'history':
+                    fab.title = 'Aggiungi Documentazione';
+                    fab.onclick = () => openAddHistoryModal();
+                    icon = 'post_add';
+                    break;
+                case 'db':
+                    fab.title = 'Aggiungi Esercizio';
+                    fab.onclick = () => openExerciseModal();
+                    icon = 'fitness_center';
+                    break;
+            }
+             fab.innerHTML = `<span class="material-icons">${icon}</span>`;
+        }
+        
+        // --- FUNZIONI DI RENDERING ---
+        function render() {
+            if (!state.userId) return; // Non renderizzare nulla se non siamo autenticati
+            switch (state.currentPage) {
+                case 'sheets': renderSheetsPage(); break;
+                case 'history': renderHistoryPage(); break;
+                case 'db': renderDbPage(); break;
+            }
+        }
+        
+        function renderDbPage() {
+            const list = document.getElementById('categories-list');
+            if (!list) return;
+            
+            const searchTerm = document.getElementById('search-exercises').value.toLowerCase();
+            const sortOption = document.getElementById('sort-exercises').value;
+
+            let filteredExercises = state.exercises.filter(ex => 
+                ex.name.toLowerCase().includes(searchTerm) ||
+                ex.zone.toLowerCase().includes(searchTerm) ||
+                state.categories.find(c => c.id === ex.categoryId)?.name.toLowerCase().includes(searchTerm)
+            );
+
+            // Sorting
+            switch (sortOption) {
+                case 'name_asc': filteredExercises.sort((a, b) => a.name.localeCompare(b.name)); break;
+                case 'name_desc': filteredExercises.sort((a, b) => b.name.localeCompare(a.name)); break;
+                case 'category':
+                    filteredExercises.sort((a, b) => {
+                        const catA = state.categories.find(c => c.id === a.categoryId)?.name || 'zzz';
+                        const catB = state.categories.find(c => c.id === b.categoryId)?.name || 'zzz';
+                        return catA.localeCompare(catB);
+                    });
+                    break;
+                case 'bodypart': filteredExercises.sort((a, b) => a.zone.localeCompare(b.zone)); break;
+                case 'updatedAt_desc': filteredExercises.sort((a, b) => (b.updatedAt?.seconds || 0) - (a.updatedAt?.seconds || 0)); break;
+                case 'createdAt_desc': filteredExercises.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0)); break;
+            }
+
+            const exercisesByCategory = filteredExercises.reduce((acc, ex) => {
+                const catId = ex.categoryId || 'uncategorized';
+                if (!acc[catId]) acc[catId] = [];
+                acc[catId].push(ex);
+                return acc;
+            }, {});
+
+            if (state.categories.length === 0 && state.exercises.length === 0) {
+                 list.innerHTML = `<div class="text-center p-8 bg-blue-50 text-blue-700 rounded-lg">
+                    <h3 class="text-xl font-medium">Benvenuto!</h3>
+                    <p class="mt-2">Inizia creando la tua prima categoria di esercizi usando il pulsante in alto a destra.</p>
+                </div>`;
+                return;
+            }
+
+            const allCategories = [...state.categories, {id: 'uncategorized', name: 'Non Categorizzati', description: 'Esercizi senza una categoria'}];
+
+            list.innerHTML = allCategories.map(cat => {
+                const exercises = exercisesByCategory[cat.id] || [];
+                if (cat.id === 'uncategorized' && exercises.length === 0) return '';
+                return `
+                    <div class="material-card p-4">
+                        <div class="flex justify-between items-center mb-2">
+                            <div>
+                                <h3 class="text-xl font-medium text-[#49454f]">${cat.name}</h3>
+                                ${cat.description ? `<p class="text-sm text-gray-500">${cat.description}</p>` : ''}
+                            </div>
+                            ${cat.id !== 'uncategorized' ? `
+                            <div class="flex items-center gap-2">
+                                <button onclick="window.app.openCategoryModal('${cat.id}')" class="material-button-text p-2 rounded-full"><span class="material-icons text-lg">edit</span></button>
+                                <button onclick="window.app.deleteCategory('${cat.id}')" class="material-button-text p-2 rounded-full"><span class="material-icons text-lg">delete</span></button>
+                            </div>` : ''}
+                        </div>
+                        <div class="border-t my-2"></div>
+                        <div class="space-y-2">
+                            ${exercises.length > 0 ? exercises.map(ex => `
+                                <div onclick="window.app.openExerciseModal('${ex.id}')" class="flex justify-between items-center p-2 rounded-lg hover:bg-gray-100 cursor-pointer">
+                                    <div>
+                                        <p class="font-medium">${ex.name}</p>
+                                        <p class="text-xs px-2 py-1 bg-purple-100 text-purple-700 rounded-full inline-block">${ex.zone}</p>
+                                    </div>
+                                    <span class="material-icons text-gray-400">chevron_right</span>
+                                </div>
+                            `).join('') : '<p class="text-sm text-center text-gray-400 py-2">Nessun esercizio. Aggiungine uno con il pulsante flottante!</p>'}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+        
+        function renderHistoryPage() {
+             const list = document.getElementById('history-list');
+             if (!list) return;
+
+            const searchTerm = document.getElementById('search-history').value.toLowerCase();
+            const searchDate = document.getElementById('search-history-date').value;
+            
+            let filteredHistory = state.history.filter(item => {
+                const exercise = state.exercises.find(ex => ex.id === item.exerciseId);
+                if (!exercise) return false;
+
+                const nameMatch = exercise.name.toLowerCase().includes(searchTerm);
+                const diary = item.diary || '';
+                const diaryMatch = diary.toLowerCase().includes(searchTerm);
+
+                let dateMatch = true;
+                if (searchDate) {
+                    const itemDate = new Date(item.timestamp.seconds * 1000).toISOString().split('T')[0];
+                    dateMatch = itemDate === searchDate;
+                }
+
+                return (nameMatch || diaryMatch) && dateMatch;
+            });
+            
+            const historyByDay = filteredHistory.reduce((acc, item) => {
+                const date = new Date(item.timestamp.seconds * 1000).toLocaleDateString('it-IT', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' });
+                if (!acc[date]) acc[date] = [];
+                acc[date].push(item);
+                return acc;
+            }, {});
+
+            const sortedDates = Object.keys(historyByDay).sort((a, b) => {
+                const dateA = new Date(historyByDay[a][0].timestamp.seconds * 1000);
+                const dateB = new Date(historyByDay[b][0].timestamp.seconds * 1000);
+                return dateB - dateA;
+            });
+
+            if (sortedDates.length === 0) {
+                list.innerHTML = `<p class="text-center text-gray-500">Nessun dato nello storico. Aggiungi una documentazione dal pulsante flottante!</p>`;
+                return;
+            }
+
+            list.innerHTML = sortedDates.map(date => `
+                <div>
+                    <h3 class="text-lg font-medium text-gray-500 mb-2">${date}</h3>
+                    <div class="space-y-2">
+                        ${historyByDay[date].map(item => {
+                            const exercise = state.exercises.find(ex => ex.id === item.exerciseId);
+                            const category = state.categories.find(c => c.id === exercise?.categoryId);
+                            
+                            return `
+                            <div class="material-card p-4">
+                                <div class="flex justify-between items-start">
+                                    <div>
+                                        <p class="font-bold text-lg cursor-pointer hover:underline" onclick="window.app.openExerciseModal('${exercise?.id}')">${exercise?.name || 'Esercizio Eliminato'}</p>
+                                        <p class="text-sm text-gray-500">${category?.name || 'N/A'}</p>
+                                    </div>
+                                    <div class="flex gap-1">
+                                         <button onclick="window.app.openAddHistoryModal(null, '${item.id}')" class="material-button-text p-2 rounded-full"><span class="material-icons text-lg">edit</span></button>
+                                         <button onclick="window.app.deleteHistoryItem('${item.id}')" class="material-button-text p-2 rounded-full"><span class="material-icons text-lg">delete</span></button>
+                                    </div>
+                                </div>
+                                ${item.params && Object.keys(item.params).length > 0 ? `
+                                <div class="mt-2 border-t pt-2">
+                                    <h4 class="font-medium text-sm mb-1">Parametri Aggiornati:</h4>
+                                    <ul class="list-disc list-inside text-sm space-y-1">
+                                    ${Object.entries(item.params).map(([key, p]) => `
+                                        <li>
+                                            <strong>${key}:</strong> ${renderCompoundParam(p.value)}
+                                            ${p.previousValue ? `
+                                                <span class="text-xs text-gray-500 ml-2">
+                                                    (prima: ${renderCompoundParam(p.previousValue)})
+                                                    ${getComparisonArrow(p.value, p.previousValue)}
+                                                </span>
+                                            ` : '<span class="text-xs text-green-600 ml-2">(primo inserimento)</span>'}
+                                        </li>
+                                    `).join('')}
+                                    </ul>
+                                </div>` : ''}
+                                ${item.diary ? `
+                                <div class="mt-2 border-t pt-2">
+                                     <h4 class="font-medium text-sm mb-1">Nota Diario:</h4>
+                                     <p class="text-sm bg-yellow-50 p-2 rounded-md">${item.diary}</p>
+                                </div>
+                                ` : ''}
+                            </div>`
+                        }).join('')}
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // Rendering Schede
+        function renderSheetsPage() {
+            const list = document.getElementById('sheets-list');
+            if(!list) return;
+
+            const searchTerm = document.getElementById('search-sheets').value.toLowerCase();
+            
+            let filteredSheets = state.sheets.filter(sheet => {
+                if (sheet.name.toLowerCase().includes(searchTerm) || sheet.description.toLowerCase().includes(searchTerm)) {
+                    return true;
+                }
+                const items = state.sheetItems[sheet.id] || [];
+                return items.some(item => {
+                    if (item.type !== 'exercise') return false;
+                    const exercise = state.exercises.find(ex => ex.id === item.exerciseId);
+                    if (!exercise) return false;
+                    const category = state.categories.find(c => c.id === exercise.categoryId);
+                    return exercise.name.toLowerCase().includes(searchTerm) || category?.name.toLowerCase().includes(searchTerm);
+                });
+            });
+
+            if(filteredSheets.length === 0) {
+                list.innerHTML = `<p class="text-center text-gray-500">Nessuna scheda trovata. Creane una nuova con il pulsante flottante!</p>`;
+                return;
+            }
+
+            list.innerHTML = filteredSheets.map(sheet => {
+                 const isExpanded = document.getElementById(`sheet-content-${sheet.id}`)?.style.display !== 'none';
+                return `
+                <div class="material-card">
+                    <div class="p-4 cursor-pointer" onclick="const content = document.getElementById('sheet-content-${sheet.id}'); content.style.display = content.style.display === 'none' ? 'block' : 'none'; this.querySelector('.material-icons').classList.toggle('rotate-180')">
+                         <div class="flex justify-between items-center">
+                            <div>
+                                <h3 class="text-xl font-medium">${sheet.name}</h3>
+                                <p class="text-sm text-gray-500">${sheet.description}</p>
+                            </div>
+                            <span class="material-icons transition-transform transform ${isExpanded ? 'rotate-180' : ''}">expand_more</span>
+                         </div>
+                    </div>
+                    <div id="sheet-content-${sheet.id}" style="display: ${isExpanded ? 'block' : 'none'}" class="border-t">
+                        <div class="p-4 space-y-3">
+                            <div class="flex justify-between items-center flex-wrap gap-2">
+                                <p class="text-sm font-medium">Note: <span class="font-normal">${sheet.notes || 'Nessuna nota'}</span></p>
+                                <div class="flex gap-2 flex-wrap">
+                                    <button onclick="window.app.openSheetModal('${sheet.id}')" class="material-button-text p-2 rounded-full" title="Modifica Scheda"><span class="material-icons text-lg">edit</span></button>
+                                    <button onclick="window.app.deleteSheet('${sheet.id}')" class="material-button-text p-2 rounded-full" title="Elimina Scheda"><span class="material-icons text-lg">delete</span></button>
+                                    <button onclick="window.app.addItemsToSheet('${sheet.id}')" class="material-button-outlined text-sm px-3 py-1">Aggiungi Elementi</button>
+                                    <button onclick="window.app.resetSheetDoneStatus('${sheet.id}')" class="material-button-text p-2 rounded-full" title="Segna tutti come 'da fare'"><span class="material-icons text-lg">refresh</span></button>
+                                </div>
+                            </div>
+                            <div id="sheet-items-${sheet.id}" class="space-y-2">
+                                ${renderSheetItems(sheet.id)}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `}).join('');
+        }
+        
+        function renderSheetItems(sheetId) {
+            const items = (state.sheetItems[sheetId] || []).sort((a,b) => a.order - b.order);
+            if (items.length === 0) return `<p class="text-sm text-center text-gray-400 py-2">Questa scheda è vuota. Aggiungi esercizi o pause.</p>`;
+            
+            return items.map((item, index) => {
+                switch (item.type) {
+                    case 'exercise': return renderExerciseItem(item, sheetId, index, items.length);
+                    case 'pause': return renderPauseItem(item, sheetId, index, items.length);
+                    case 'text': return renderTextItem(item, sheetId, index, items.length);
+                    default: return '';
+                }
+            }).join('');
+        }
+
+        function renderExerciseItem(item, sheetId, index, totalItems) {
+            const exercise = state.exercises.find(e => e.id === item.exerciseId);
+            if (!exercise) return `<div class="p-2 border rounded bg-red-100 text-red-700">Esercizio non trovato (ID: ${item.exerciseId}) <button onclick="window.app.deleteSheetItem('${sheetId}', '${item.id}')" class="text-red-700 underline ml-2">Rimuovi</button></div>`;
+
+            const latestHistory = state.history
+                .filter(h => h.exerciseId === item.exerciseId && h.params)
+                .sort((a,b) => b.timestamp.seconds - a.timestamp.seconds)[0];
+
+            return `
+                <div class="material-card p-3 flex flex-col gap-3 sheet-item ${item.isDeactivated ? 'deactivated' : ''}">
+                    <div class="flex items-start justify-between">
+                        <div class="flex items-center gap-2 flex-grow">
+                            <input type="checkbox" ${item.isDone ? 'checked' : ''} onchange="window.app.toggleSheetItemDone('${sheetId}', '${item.id}', this.checked)" class="w-5 h-5 mt-1 flex-shrink-0">
+                            <div class="flex items-center gap-2">
+                                <span class="w-4 h-4 rounded-full flex-shrink-0" style="background-color: ${item.color || '#cccccc'}"></span>
+                                <span class="font-bold text-lg cursor-pointer hover:underline" onclick="window.app.openExerciseModal('${exercise.id}')">${exercise.name}</span>
+                            </div>
+                        </div>
+                        <div class="flex items-center flex-shrink-0">
+                           ${renderReorderButtons(sheetId, item.id, index, totalItems)}
+                           <button onclick="window.app.openSheetItemActions('${sheetId}', '${item.id}')" class="material-button-text p-2 rounded-full"><span class="material-icons text-lg">more_vert</span></button>
+                        </div>
+                    </div>
+                    <!-- Parametri -->
+                    <div class="pl-9 space-y-2">
+                        <label class="font-medium text-sm">Ultima performance:</label>
+                        <div class="text-sm p-2 bg-gray-100 rounded space-y-1">
+                            ${(exercise.parameters && exercise.parameters.length > 0) ? exercise.parameters.map(paramName => {
+                                const lastValue = latestHistory?.params?.[paramName]?.value;
+                                return `<div><strong>${paramName}:</strong> ${renderCompoundParam(lastValue) || 'N/D'}</div>`;
+                            }).join('') : '<span>N/D</span>'}
+                        </div>
+                        <button onclick="window.app.openAddHistoryModal('${exercise.id}')" class="material-button-outlined text-xs px-3 py-1 mt-2">Aggiorna Parametri / Diario</button>
+                    </div>
+                </div>
+            `;
+        }
+        
+        function renderPauseItem(item, sheetId, index, totalItems) {
+             const timerId = `timer-${item.id}`;
+             const remaining = state.timers[timerId]?.remaining ?? item.duration;
+             const isRunning = state.timers[timerId]?.intervalId;
+            return `
+                <div class="material-card p-3 flex items-center justify-between sheet-item ${item.isDeactivated ? 'deactivated' : ''}">
+                     <div class="flex items-center gap-3">
+                        <span class="material-icons text-blue-500">timer</span>
+                        <div class="text-lg font-mono ${state.timers[timerId]?.isFinished ? 'blinking text-red-500' : ''}" id="${timerId}">${formatTime(remaining)}</div>
+                    </div>
+                    <div class="flex items-center">
+                         <button onclick="window.app.toggleTimer('${item.id}', ${item.duration})" class="material-button-text p-2 rounded-full">
+                            <span class="material-icons text-lg">${isRunning ? 'pause' : 'play_arrow'}</span>
+                        </button>
+                        <button onclick="window.app.resetTimer('${item.id}', ${item.duration})" class="material-button-text p-2 rounded-full"><span class="material-icons text-lg">replay</span></button>
+                        ${renderReorderButtons(sheetId, item.id, index, totalItems)}
+                        <button onclick="window.app.openSheetItemActions('${sheetId}', '${item.id}')" class="material-button-text p-2 rounded-full"><span class="material-icons text-lg">more_vert</span></button>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderTextItem(item, sheetId, index, totalItems) {
+            return `
+                 <div class="material-card p-3 flex items-center justify-between sheet-item ${item.isDeactivated ? 'deactivated' : ''}">
+                     <div class="flex items-center gap-3">
+                        <span class="material-icons text-gray-500">notes</span>
+                        <p>${item.text}</p>
+                    </div>
+                    <div class="flex items-center">
+                         ${renderReorderButtons(sheetId, item.id, index, totalItems)}
+                        <button onclick="window.app.openSheetItemActions('${sheetId}', '${item.id}')" class="material-button-text p-2 rounded-full"><span class="material-icons text-lg">more_vert</span></button>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderReorderButtons(sheetId, itemId, index, total) {
+            return `
+                <button ${index === 0 ? 'disabled' : ''} onclick="event.stopPropagation(); window.app.reorderSheetItem('${sheetId}', '${itemId}', 'up')" class="material-button-text p-2 rounded-full disabled:opacity-25"><span class="material-icons text-lg">arrow_upward</span></button>
+                <button ${index === total - 1 ? 'disabled' : ''} onclick="event.stopPropagation(); window.app.reorderSheetItem('${sheetId}', '${itemId}', 'down')" class="material-button-text p-2 rounded-full disabled:opacity-25"><span class="material-icons text-lg">arrow_downward</span></button>
+            `;
+        }
+        
+        // --- FUNZIONI UTILITY ---
+        function getComparisonArrow(newValueJSON, oldValueJSON) {
+            if (!newValueJSON || !oldValueJSON) return '';
+            try {
+                const currentSets = JSON.parse(newValueJSON);
+                const previousSets = JSON.parse(oldValueJSON);
+                const currentVolume = (currentSets[0]?.val1 || 0) * (currentSets[0]?.val2 || 1);
+                const previousVolume = (previousSets[0]?.val1 || 0) * (previousSets[0]?.val2 || 1);
+                if (currentVolume > previousVolume) return '<span class="material-icons text-green-500 text-sm align-middle">arrow_upward</span>';
+                if (currentVolume < previousVolume) return '<span class="material-icons text-red-500 text-sm align-middle">arrow_downward</span>';
+            } catch (e) { /* ignore */ }
+            return '';
+        }
+        
+        function renderCompoundParam(jsonString) {
+            if (!jsonString) return 'N/D';
+            try {
+                const sets = JSON.parse(jsonString);
+                if (!Array.isArray(sets) || sets.length === 0) return 'N/D';
+                return sets.map(set => 
+                    Object.values(set).filter(v => v).join(' x ')
+                ).join(' / ');
+            } catch (e) {
+                return 'Dati non validi';
+            }
+        }
+
+
+        function showConfirm(title, message, onConfirm) {
+            document.getElementById('confirm-title').innerText = title;
+            document.getElementById('confirm-message').innerHTML = message;
+            const confirmModal = document.getElementById('confirm-modal');
+            confirmModal.classList.remove('hidden');
+
+            const okButton = document.getElementById('confirm-ok');
+            const cancelButton = document.getElementById('confirm-cancel');
+
+            const close = () => confirmModal.classList.add('hidden');
+            
+            const newOkButton = okButton.cloneNode(true);
+            okButton.parentNode.replaceChild(newOkButton, okButton);
+
+            newOkButton.onclick = () => {
+                onConfirm();
+                close();
+            };
+            cancelButton.onclick = close;
+        }
+        
+        function showToast(message, type = 'success') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            const bgColor = type === 'success' ? 'bg-green-500' : 'bg-red-500';
+            toast.className = `toast ${bgColor} text-white text-sm font-medium px-4 py-2 rounded-full shadow-md opacity-0 transform translate-y-2`;
+            toast.innerText = message;
+            container.appendChild(toast);
+            
+            setTimeout(() => {
+                toast.classList.remove('opacity-0', 'translate-y-2');
+            }, 10);
+
+            setTimeout(() => {
+                toast.classList.add('opacity-0', 'translate-y-2');
+                toast.addEventListener('transitionend', () => toast.remove());
+            }, 3000);
+        }
+
+        function formatTime(seconds) {
+            const min = Math.floor(seconds / 60);
+            const sec = seconds % 60;
+            return `${String(min).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
+        }
+        
+        // --- GESTIONE MODALS ---
+        
+        function closeModal() {
+            if (state.chartInstance) {
+                state.chartInstance.destroy();
+                state.chartInstance = null;
+            }
+            modalContainer.classList.add('hidden');
+            modalContainer.innerHTML = '';
+        }
+
+        function openCategoryModal(id = null) {
+            const category = id ? state.categories.find(c => c.id === id) : null;
+            const title = category ? 'Modifica Categoria' : 'Nuova Categoria';
+            modalContainer.innerHTML = `
+                <div class="modal-content p-6 overflow-y-auto">
+                    <h3 class="text-xl font-medium mb-6">${title}</h3>
+                    <div class="space-y-4">
+                        <input type="text" id="category-name" placeholder="Nome Categoria" class="input-field" value="${category?.name || ''}">
+                        <textarea id="category-description" placeholder="Descrizione (opzionale)" class="input-field min-h-[100px]">${category?.description || ''}</textarea>
+                    </div>
+                    <div class="flex justify-end gap-2 mt-6">
+                        <button onclick="window.app.closeModal()" class="material-button material-button-text">Annulla</button>
+                        <button id="save-category-btn" class="material-button material-button-filled">Salva</button>
+                    </div>
+                </div>`;
+            modalContainer.classList.remove('hidden');
+            document.getElementById('save-category-btn').onclick = () => saveCategory(id);
+        }
+        
+        function openExerciseModal(id = null) { 
+            const exercise = id ? state.exercises.find(e => e.id === id) : null;
+            const title = exercise ? 'Dettagli Esercizio' : 'Nuovo Esercizio';
+            
+            modalContainer.innerHTML = `
+                <div class="modal-content flex flex-col">
+                    <div class="p-6 border-b">
+                        <h3 class="text-xl font-medium">${title}</h3>
+                        ${exercise ? `<p class="text-sm text-gray-500">${exercise.zone} - ${state.categories.find(c=>c.id === exercise.categoryId)?.name || 'N/A'}</p>`:''}
+                    </div>
+                    <div class="flex border-b">
+                        <button id="tab-info" class="tab-button flex-1 active">Info</button>
+                        <button id="tab-progress" class="tab-button flex-1 ${!id ? 'hidden' : ''}">Progressi</button>
+                        <button id="tab-diary" class="tab-button flex-1 ${!id ? 'hidden' : ''}">Diario</button>
+                    </div>
+                    <div class="p-6 overflow-y-auto flex-1">
+                        <div id="tab-content-info"></div>
+                        <div id="tab-content-progress" class="hidden"></div>
+                        <div id="tab-content-diary" class="hidden"></div>
+                    </div>
+                    <div class="flex justify-between items-center p-4 bg-gray-50 border-t">
+                        <div>
+                            ${id ? `<button onclick="window.app.deleteExercise('${id}')" class="material-button material-button-text text-red-600">Elimina</button>` : ''}
+                        </div>
+                        <div class="flex gap-2">
+                            <button onclick="window.app.closeModal()" class="material-button material-button-text">Chiudi</button>
+                            <button id="save-exercise-btn" class="material-button material-button-filled">Salva</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            const tabs = ['info', 'progress', 'diary'];
+            tabs.forEach(tab => {
+                const tabButton = document.getElementById(`tab-${tab}`);
+                if (tabButton) {
+                    tabButton.onclick = () => {
+                        tabs.forEach(t => {
+                            document.getElementById(`tab-${t}`)?.classList.remove('active');
+                            document.getElementById(`tab-content-${t}`)?.classList.add('hidden');
+                        });
+                        document.getElementById(`tab-${tab}`)?.classList.add('active');
+                        document.getElementById(`tab-content-${tab}`)?.classList.remove('hidden');
+                    };
+                }
+            });
+
+            renderExerciseInfoTab(exercise);
+            if (id) {
+                renderExerciseProgressTab(exercise);
+                renderExerciseDiaryTab(exercise);
+            }
+
+            modalContainer.classList.remove('hidden');
+            document.getElementById('save-exercise-btn').onclick = () => saveExercise(id);
+        }
+
+        function openSheetModal(id = null) {
+             const sheet = id ? state.sheets.find(s => s.id === id) : null;
+             const title = sheet ? 'Modifica Scheda' : 'Nuova Scheda';
+             modalContainer.innerHTML = `
+                <div class="modal-content p-6 overflow-y-auto">
+                    <h3 class="text-xl font-medium mb-6">${title}</h3>
+                    <div class="space-y-4">
+                        <input type="text" id="sheet-name" placeholder="Nome Scheda" class="input-field" value="${sheet?.name || ''}">
+                        <textarea id="sheet-description" placeholder="Descrizione (opzionale)" class="input-field">${sheet?.description || ''}</textarea>
+                        <textarea id="sheet-notes" placeholder="Note (opzionale)" class="input-field min-h-[100px]">${sheet?.notes || ''}</textarea>
+                    </div>
+                    <div class="flex justify-end gap-2 mt-6">
+                        <button onclick="window.app.closeModal()" class="material-button material-button-text">Annulla</button>
+                        <button id="save-sheet-btn" class="material-button material-button-filled">Salva</button>
+                    </div>
+                </div>`;
+            modalContainer.classList.remove('hidden');
+            document.getElementById('save-sheet-btn').onclick = () => saveSheet(id);
+        }
+
+        function openAddHistoryModal(exerciseId = null, historyId = null) {
+            const historyItem = historyId ? state.history.find(h => h.id === historyId) : null;
+            const exerciseIdToUse = historyItem?.exerciseId || exerciseId;
+            if (!exerciseIdToUse) {
+                modalContainer.innerHTML = `
+                    <div class="modal-content p-6 overflow-y-auto">
+                        <h3 class="text-xl font-medium mb-4">Scegli un Esercizio</h3>
+                        <select id="history-exercise-select" class="input-field">
+                            <option value="">Seleziona...</option>
+                            ${state.categories.map(cat => `
+                                <optgroup label="${cat.name}">
+                                    ${state.exercises.filter(ex => ex.categoryId === cat.id).map(ex => `
+                                        <option value="${ex.id}">${ex.name}</option>
+                                    `).join('')}
+                                </optgroup>
+                            `).join('')}
+                        </select>
+                        <div class="flex justify-end gap-2 mt-6">
+                            <button onclick="window.app.closeModal()" class="material-button material-button-text">Annulla</button>
+                            <button onclick="const val = document.getElementById('history-exercise-select').value; if(val) window.app.openAddHistoryModal(val);" class="material-button material-button-filled">Avanti</button>
+                        </div>
+                    </div>`;
+                modalContainer.classList.remove('hidden');
+                return;
+            }
+
+            const exercise = state.exercises.find(e => e.id === exerciseIdToUse);
+            if (!exercise) return showToast("Esercizio non trovato.", 'error');
+
+            const title = historyId ? 'Modifica Documentazione' : 'Aggiungi Documentazione';
+            
+            modalContainer.innerHTML = `
+                 <div class="modal-content p-6 overflow-y-auto">
+                    <h3 class="text-xl font-medium mb-2">${title}</h3>
+                    <p class="mb-4 text-gray-600">per <strong>${exercise.name}</strong></p>
+                    
+                    <div class="space-y-4">
+                        <input type="datetime-local" id="history-timestamp" class="input-field" value="${historyItem ? new Date(historyItem.timestamp.seconds * 1000 - new Date().getTimezoneOffset() * 60000).toISOString().substring(0, 16) : new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().substring(0, 16)}">
+                        
+                        <div id="params-container" class="space-y-4">
+                             ${(exercise.parameters && exercise.parameters.length > 0) ? exercise.parameters.map(paramName => {
+                                 let sets = [];
+                                 try { sets = JSON.parse(historyItem?.params?.[paramName]?.value || '[]'); } catch(e){}
+                                 return `
+                                    <div class="p-2 border rounded" data-param-name="${paramName}">
+                                        <label class="font-medium">${paramName}</label>
+                                        <div class="space-y-2 mt-1" id="sets-for-${paramName.replace(/\s/g,'-')}">
+                                            ${sets.map((set, index) => `
+                                                <div class="flex gap-2 items-center" data-set-index="${index}">
+                                                    <input type="text" placeholder="" class="input-field !p-2 flex-1" value="${set.val1 || ''}">
+                                                    <input type="text" placeholder="" class="input-field !p-2 flex-1" value="${set.val2 || ''}">
+                                                    <input type="text" placeholder="" class="input-field !p-2 flex-1" value="${set.val3 || ''}">
+                                                    <button onclick="this.parentElement.remove()" class="material-button-text p-2 rounded-full"><span class="material-icons">remove_circle_outline</span></button>
+                                                </div>
+                                            `).join('')}
+                                        </div>
+                                        <button onclick="window.app.addParamSet('${paramName.replace(/\s/g,'-')}')" class="material-button-outlined text-xs px-3 py-1 mt-2">Aggiungi Riga</button>
+                                    </div>`;
+                                }).join('') : '<p class="text-gray-500 text-sm">Nessun parametro da tracciare per questo esercizio. Modifica l\'esercizio per aggiungerne.</p>'}
+                        </div>
+
+                        <textarea id="history-diary" placeholder="Nota nel diario (opzionale)" class="input-field min-h-[100px]">${historyItem?.diary || ''}</textarea>
+                    </div>
+
+                    <div class="flex justify-end gap-2 mt-6">
+                        <button onclick="window.app.closeModal()" class="material-button material-button-text">Annulla</button>
+                        <button id="save-history-btn" class="material-button material-button-filled">Salva</button>
+                    </div>
+                </div>
+            `;
+            modalContainer.classList.remove('hidden');
+            document.getElementById('save-history-btn').onclick = () => saveHistoryItem(exercise.id, historyId);
+        }
+
+        function addItemsToSheet(sheetId) {
+             modalContainer.innerHTML = `
+                <div class="modal-content p-6 overflow-y-auto">
+                    <h3 class="text-xl font-medium mb-4">Aggiungi Elementi alla Scheda</h3>
+                    <div class="flex gap-2 mb-4">
+                        <button id="add-item-type-exercise" class="tab-button active">Esercizi</button>
+                        <button id="add-item-type-pause" class="tab-button">Pausa</button>
+                        <button id="add-item-type-text" class="tab-button">Testo</button>
+                    </div>
+                    <div id="add-items-content"></div>
+                    <div class="flex justify-end gap-2 mt-6">
+                        <button onclick="window.app.closeModal()" class="material-button material-button-text">Annulla</button>
+                        <button id="save-items-btn" class="material-button material-button-filled">Aggiungi Selezionati</button>
+                    </div>
+                </div>`;
+
+            const renderContent = (type) => {
+                const contentDiv = document.getElementById('add-items-content');
+                 document.querySelectorAll('.modal-content .tab-button').forEach(b => b.classList.remove('active'));
+                 document.getElementById(`add-item-type-${type}`).classList.add('active');
+                
+                switch(type) {
+                    case 'exercise':
+                        contentDiv.innerHTML = `
+                        <div class="max-h-60 overflow-y-auto space-y-2 border p-2 rounded">
+                        ${state.categories.map(cat => `
+                            <div>
+                                <h4 class="font-bold text-gray-600">${cat.name}</h4>
+                                ${state.exercises.filter(ex => ex.categoryId === cat.id).map(ex => `
+                                    <label class="flex items-center gap-2 p-1 rounded hover:bg-gray-100">
+                                        <input type="checkbox" value="${ex.id}" class="w-4 h-4">
+                                        <span>${ex.name}</span>
+                                    </label>
+                                `).join('')}
+                            </div>
+                        `).join('')}
+                        </div>`;
+                        break;
+                    case 'pause':
+                        contentDiv.innerHTML = `
+                        <div class="flex gap-2 items-center">
+                            <input type="number" id="pause-minutes" placeholder="Minuti" class="input-field !p-2 w-1/2">
+                            <input type="number" id="pause-seconds" placeholder="Secondi" class="input-field !p-2 w-1/2">
+                        </div>`;
+                        break;
+                    case 'text':
+                        contentDiv.innerHTML = `<textarea id="text-content" placeholder="Scrivi una nota per la scheda..." class="input-field min-h-[100px]"></textarea>`;
+                        break;
+                }
+            }
+            
+            document.getElementById('add-item-type-exercise').onclick = () => renderContent('exercise');
+            document.getElementById('add-item-type-pause').onclick = () => renderContent('pause');
+            document.getElementById('add-item-type-text').onclick = () => renderContent('text');
+            
+            document.getElementById('save-items-btn').onclick = () => saveItemsToSheet(sheetId);
+            
+            renderContent('exercise');
+            modalContainer.classList.remove('hidden');
+        }
+        
+        // --- RENDER TAB DEI MODAL ---
+        
+        function renderExerciseInfoTab(exercise) {
+            const container = document.getElementById('tab-content-info');
+            container.innerHTML = `
+                <div class="space-y-4">
+                    <input type="text" id="exercise-name" placeholder="Nome Esercizio" class="input-field" value="${exercise?.name || ''}">
+                    <select id="exercise-zone" class="input-field">
+                        <option value="">Seleziona Zona Allenamento</option>
+                        ${ZONES.map(z => `<option value="${z}" ${exercise?.zone === z ? 'selected' : ''}>${z}</option>`).join('')}
+                    </select>
+                    <select id="exercise-category" class="input-field">
+                        <option value="">Nessuna Categoria</option>
+                         ${state.categories.map(c => `<option value="${c.id}" ${exercise?.categoryId === c.id ? 'selected' : ''}>${c.name}</option>`).join('')}
+                    </select>
+
+                    <div>
+                        <h4 class="font-medium mb-2">Parametri da tracciare</h4>
+                        <div id="parameters-list" class="space-y-2">
+                            ${(exercise?.parameters || []).map(p => `
+                                <div class="flex items-center gap-2">
+                                    <input type="text" class="input-field !p-2 flex-grow" value="${p}">
+                                    <button onclick="this.parentElement.remove()" class="material-button-text p-2 rounded-full"><span class="material-icons">remove_circle_outline</span></button>
+                                </div>
+                            `).join('')}
+                        </div>
+                        <button onclick="window.app.addParameterField()" class="material-button-outlined text-sm px-3 py-1 mt-2">Aggiungi Parametro</button>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderExerciseProgressTab(exercise) {
+            const container = document.getElementById('tab-content-progress');
+            const exerciseHistory = state.history.filter(h => h.exerciseId === exercise.id && h.params && Object.keys(h.params).length > 0)
+                                        .sort((a,b) => a.timestamp.seconds - b.timestamp.seconds);
+            
+            if (exerciseHistory.length === 0) {
+                container.innerHTML = `<p class="text-center text-gray-500">Nessun progresso registrato per questo esercizio.</p>`;
+                return;
+            }
+
+            container.innerHTML = `
+                <canvas id="progress-chart"></canvas>
+                <div class="mt-4 border-t pt-4 space-y-2 max-h-60 overflow-y-auto">
+                    ${[...exerciseHistory].reverse().map(h => `
+                        <div class="text-sm p-2 bg-gray-50 rounded">
+                            <p class="font-bold">${new Date(h.timestamp.seconds * 1000).toLocaleString('it-IT')}</p>
+                            ${Object.entries(h.params).map(([key, p]) => `<p><strong>${key}:</strong> ${renderCompoundParam(p.value)}</p>`).join('')}
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+
+            if (state.chartInstance) state.chartInstance.destroy();
+            
+            const ctx = document.getElementById('progress-chart').getContext('2d');
+            const datasets = {};
+            
+            exerciseHistory.forEach(h => {
+                const date = new Date(h.timestamp.seconds * 1000);
+                Object.entries(h.params).forEach(([paramName, p]) => {
+                    if (!datasets[paramName]) {
+                        datasets[paramName] = {
+                            label: `${paramName} (Volume)`,
+                            data: [],
+                            borderColor: COLORS[Object.keys(datasets).length % COLORS.length],
+                            fill: false,
+                            tension: 0.1
+                        };
+                    }
+                    try {
+                        const sets = JSON.parse(p.value);
+                        const totalVolume = (sets[0]?.val1 || 0) * (sets[0]?.val2 || 1);
+                        if (!isNaN(totalVolume)) {
+                           datasets[paramName].data.push({ x: date, y: totalVolume });
+                        }
+                    } catch(e) {}
+                });
+            });
+
+            state.chartInstance = new Chart(ctx, {
+                type: 'line',
+                data: { datasets: Object.values(datasets) },
+                 options: {
+                    scales: {
+                        x: { 
+                            type: 'time',
+                            time: { unit: 'day', displayFormats: { day: 'dd/MM/yy' } },
+                            title: { display: true, text: 'Data' } 
+                        },
+                        y: { title: { display: true, text: 'Volume' } }
+                    },
+                    plugins: {
+                        tooltip: { callbacks: { title: (context) => new Date(context[0].parsed.x).toLocaleDateString('it-IT') } }
+                    }
+                }
+            });
+        }
+        
+        function renderExerciseDiaryTab(exercise) {
+             const container = document.getElementById('tab-content-diary');
+             const diaryEntries = state.history.filter(h => h.exerciseId === exercise.id && h.diary)
+                                            .sort((a,b) => b.timestamp.seconds - a.timestamp.seconds);
+            
+            if (diaryEntries.length === 0) {
+                container.innerHTML = `<p class="text-center text-gray-500">Nessuna nota nel diario per questo esercizio.</p>`;
+                return;
+            }
+
+            container.innerHTML = `
+                <div class="space-y-3 max-h-96 overflow-y-auto">
+                    ${diaryEntries.map(d => `
+                        <div class="p-3 bg-yellow-50 rounded-lg">
+                            <div class="flex justify-between items-center text-sm mb-1">
+                                <p class="font-bold">${new Date(d.timestamp.seconds * 1000).toLocaleString('it-IT')}</p>
+                                <div class="flex">
+                                    <button onclick="window.app.openAddHistoryModal(null, '${d.id}')" class="material-button-text p-1 rounded-full"><span class="material-icons text-base">edit</span></button>
+                                    <button onclick="window.app.deleteHistoryItem('${d.id}')" class="material-button-text p-1 rounded-full"><span class="material-icons text-base">delete</span></button>
+                                </div>
+                            </div>
+                            <p>${d.diary}</p>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+        }
+
+        // --- LOGICA DATABASE (Firestore) ---
+        async function saveCategory(id = null) {
+            const { userId } = state;
+            if (!userId) return showToast("Utente non autenticato.", 'error');
+            const name = document.getElementById('category-name').value.trim();
+            const description = document.getElementById('category-description').value.trim();
+            if (!name) return showToast("Il nome della categoria è obbligatorio.", 'error');
+
+            try {
+                const data = { name, description, updatedAt: serverTimestamp() };
+                const collectionPath = `/artifacts/${appId}/users/${userId}/categories`;
+                if (id) {
+                    await setDoc(doc(db, collectionPath, id), data, { merge: true });
+                } else {
+                    data.createdAt = serverTimestamp();
+                    await addDoc(collection(db, collectionPath), data);
+                }
+                closeModal();
+                showToast(`Categoria "${name}" salvata con successo.`, 'success');
+            } catch (e) {
+                console.error("Errore salvataggio categoria:", e);
+                showToast("Si è verificato un errore.", 'error');
+            }
+        }
+
+        function deleteCategory(id) {
+            const { userId } = state;
+            if (!userId) return showToast("Utente non autenticato.", 'error');
+            const category = state.categories.find(c => c.id === id);
+            if (!category) return;
+            const exercisesInCategory = state.exercises.filter(ex => ex.categoryId === id);
+            let message = `Sei sicuro di voler eliminare la categoria "<strong>${category.name}</strong>"?`;
+            if (exercisesInCategory.length > 0) {
+                message += `<br>Ci sono <strong>${exercisesInCategory.length}</strong> esercizi in questa categoria. Saranno spostati in "Non Categorizzati".`;
+            }
+            showConfirm('Conferma Eliminazione', message, async () => {
+                try {
+                    const batch = writeBatch(db);
+                    exercisesInCategory.forEach(ex => {
+                        const exRef = doc(db, `/artifacts/${appId}/users/${userId}/exercises`, ex.id);
+                        batch.update(exRef, { categoryId: '' });
+                    });
+                    const catRef = doc(db, `/artifacts/${appId}/users/${userId}/categories`, id);
+                    batch.delete(catRef);
+                    await batch.commit();
+                    showToast(`Categoria "${category.name}" eliminata.`, 'success');
+                } catch (e) {
+                    console.error("Errore eliminazione categoria:", e);
+                    showToast("Errore durante l'eliminazione.", 'error');
+                }
+            });
+        }
+        
+        async function saveExercise(id = null) {
+            const { userId } = state;
+            if (!userId) return showToast("Utente non autenticato.", 'error');
+            const name = document.getElementById('exercise-name').value.trim();
+            const zone = document.getElementById('exercise-zone').value;
+            const categoryId = document.getElementById('exercise-category').value;
+            
+            if (!name || !zone) return showToast("Nome e Zona di Allenamento sono obbligatori.", 'error');
+
+            const parameters = Array.from(document.querySelectorAll('#parameters-list > div'))
+                .map(div => div.querySelector('input').value.trim())
+                .filter(Boolean);
+
+            const data = { name, zone, categoryId, parameters, updatedAt: serverTimestamp() };
+            const collectionPath = `/artifacts/${appId}/users/${userId}/exercises`;
+
+            try {
+                if (id) {
+                    await setDoc(doc(db, collectionPath, id), data, { merge: true });
+                } else {
+                    data.createdAt = serverTimestamp();
+                    await addDoc(collection(db, collectionPath), data);
+                }
+                closeModal();
+                showToast(`Esercizio "${name}" salvato.`, 'success');
+            } catch(e) {
+                console.error("Errore salvataggio esercizio:", e);
+                showToast("Errore durante il salvataggio.", 'error');
+            }
+        }
+
+        async function deleteExercise(id) {
+            const { userId } = state;
+            if (!userId) return showToast("Utente non autenticato.", 'error');
+            showConfirm("Conferma Eliminazione", "Sei sicuro di voler eliminare questo esercizio? Verranno eliminati anche tutti i dati storici e le occorrenze nelle schede. L'azione è irreversibile.", async () => {
+                try {
+                    const batch = writeBatch(db);
+                    const basePath = `/artifacts/${appId}/users/${userId}`;
+                    
+                    batch.delete(doc(db, `${basePath}/exercises`, id));
+                    
+                    const historyQuery = query(collection(db, `${basePath}/exerciseHistory`), where('exerciseId', '==', id));
+                    const historySnapshot = await getDocs(historyQuery);
+                    historySnapshot.forEach(d => batch.delete(d.ref));
+                    
+                    for (const sheet of state.sheets) {
+                        const itemsQuery = query(collection(db, `${basePath}/workoutSheets/${sheet.id}/items`), where('exerciseId', '==', id));
+                        const itemsSnapshot = await getDocs(itemsQuery);
+                        itemsSnapshot.forEach(d => batch.delete(d.ref));
+                    }
+
+                    await batch.commit();
+                    closeModal();
+                    showToast("Esercizio eliminato con successo.", 'success');
+                } catch (e) {
+                    console.error("Errore eliminazione esercizio:", e);
+                    showToast("Errore durante l'eliminazione.", 'error');
+                }
+            });
+        }
+
+        async function saveHistoryItem(exerciseId, historyId = null) {
+            const { userId } = state;
+            if (!userId) return showToast("Utente non autenticato.", 'error');
+            const timestampStr = document.getElementById('history-timestamp').value;
+            if (!timestampStr) return showToast("La data e l'ora sono obbligatorie.", 'error');
+            const timestamp = Timestamp.fromDate(new Date(timestampStr));
+
+            const diary = document.getElementById('history-diary').value.trim();
+            const exercise = state.exercises.find(e => e.id === exerciseId);
+            const params = {};
+            let hasAnyParamValue = false;
+
+            (exercise.parameters || []).forEach(paramName => {
+                const sets = [];
+                const paramId = paramName.replace(/\s/g, '-');
+                document.querySelectorAll(`#sets-for-${paramId} > div`).forEach(setDiv => {
+                    const inputs = setDiv.querySelectorAll('input');
+                    const set = {
+                        val1: inputs[0].value || null,
+                        val2: inputs[1].value || null,
+                        val3: inputs[2].value || null,
+                    };
+                    if (set.val1 || set.val2 || set.val3) {
+                        sets.push(set);
+                        hasAnyParamValue = true;
+                    }
+                });
+
+                if (sets.length > 0) {
+                     const latestHistory = state.history
+                        .filter(h => h.exerciseId === exerciseId && h.params?.[paramName] && h.id !== historyId)
+                        .sort((a, b) => b.timestamp.seconds - a.timestamp.seconds)[0];
+                    params[paramName] = {
+                        value: JSON.stringify(sets),
+                        previousValue: latestHistory?.params?.[paramName]?.value || null
+                    };
+                }
+            });
+
+
+            if (!hasAnyParamValue && !diary) {
+                return showToast("Devi inserire almeno un valore per un parametro o una nota.", 'error');
+            }
+            
+            const data = { exerciseId, timestamp, params, diary };
+            const collectionPath = `/artifacts/${appId}/users/${userId}/exerciseHistory`;
+
+            try {
+                if (historyId) {
+                    await setDoc(doc(db, collectionPath, historyId), data, { merge: true });
+                } else {
+                    await addDoc(collection(db, collectionPath), data);
+                }
+                await setDoc(doc(db, `/artifacts/${appId}/users/${userId}/exercises`, exerciseId), { updatedAt: serverTimestamp() }, { merge: true });
+                closeModal();
+                showToast("Documentazione salvata.", 'success');
+            } catch(e) {
+                console.error("Errore salvataggio storico:", e);
+                showToast("Errore nel salvataggio.", 'error');
+            }
+        }
+        
+        async function deleteHistoryItem(id) {
+            const { userId } = state;
+            if (!userId) return showToast("Utente non autenticato.", 'error');
+            showConfirm("Conferma Eliminazione", "Sei sicuro di voler eliminare questa voce dallo storico?", async () => {
+                try {
+                    await deleteDoc(doc(db, `/artifacts/${appId}/users/${userId}/exerciseHistory`, id));
+                    showToast("Voce eliminata dallo storico.", 'success');
+                } catch(e) {
+                    console.error("Errore eliminazione storico:", e);
+                    showToast("Errore durante l'eliminazione.", 'error');
+                }
+            });
+        }
+
+        async function saveSheet(id = null) {
+            const { userId } = state;
+            if (!userId) return showToast("Utente non autenticato.", 'error');
+            const name = document.getElementById('sheet-name').value.trim();
+            const description = document.getElementById('sheet-description').value.trim();
+            const notes = document.getElementById('sheet-notes').value.trim();
+
+            if (!name) return showToast("Il nome della scheda è obbligatorio.", 'error');
+
+            const data = { name, description, notes, updatedAt: serverTimestamp() };
+            const collectionPath = `/artifacts/${appId}/users/${userId}/workoutSheets`;
+
+            try {
+                if (id) {
+                    await setDoc(doc(db, collectionPath, id), data, { merge: true });
+                } else {
+                    data.createdAt = serverTimestamp();
+                    await addDoc(collection(db, collectionPath), data);
+                }
+                closeModal();
+                showToast(`Scheda "${name}" salvata.`, 'success');
+            } catch(e) {
+                console.error("Errore salvataggio scheda:", e);
+                showToast("Errore nel salvataggio.", 'error');
+            }
+        }
+
+        async function deleteSheet(id) {
+            const { userId } = state;
+            if (!userId) return showToast("Utente non autenticato.", 'error');
+             showConfirm("Conferma Eliminazione", "Sei sicuro di voler eliminare questa scheda e tutti gli elementi al suo interno? (Azione non reversibile)", async () => {
+                try {
+                    const collectionPath = `/artifacts/${appId}/users/${userId}/workoutSheets/${id}/items`;
+                    const itemsSnapshot = await getDocs(collection(db, collectionPath));
+                    const batch = writeBatch(db);
+                    itemsSnapshot.forEach(d => batch.delete(d.ref));
+                    batch.delete(doc(db, `/artifacts/${appId}/users/${userId}/workoutSheets`, id));
+                    await batch.commit();
+                    showToast("Scheda eliminata.", 'success');
+                } catch(e) {
+                    console.error("Errore eliminazione scheda:", e);
+                    showToast("Errore durante l'eliminazione.", 'error');
+                }
+            });
+        }
+        
+        // --- LOGICA SCHEDE ALLENAMENTO ---
+        
+        async function saveItemsToSheet(sheetId) {
+            const { userId } = state;
+            if (!userId) return showToast("Utente non autenticato.", 'error');
+            const itemsToAdd = [];
+            const activeTab = document.querySelector('.modal-content .tab-button.active')?.id;
+
+            if (activeTab === 'add-item-type-exercise') {
+                document.querySelectorAll('#add-items-content input[type="checkbox"]:checked').forEach(cb => {
+                    itemsToAdd.push({ type: 'exercise', exerciseId: cb.value });
+                });
+            } else if (activeTab === 'add-item-type-pause') {
+                const minutes = parseInt(document.getElementById('pause-minutes').value) || 0;
+                const seconds = parseInt(document.getElementById('pause-seconds').value) || 0;
+                const totalSeconds = minutes * 60 + seconds;
+                if (totalSeconds > 0) itemsToAdd.push({ type: 'pause', duration: totalSeconds });
+            } else if (activeTab === 'add-item-type-text') {
+                const text = document.getElementById('text-content').value.trim();
+                if (text) itemsToAdd.push({ type: 'text', text: text });
+            }
+
+            if (itemsToAdd.length === 0) return showToast("Nessun elemento valido da aggiungere.", 'error');
+            
+            try {
+                const currentItems = state.sheetItems[sheetId] || [];
+                let maxOrder = currentItems.reduce((max, item) => Math.max(max, item.order), -1);
+                const collectionPath = `/artifacts/${appId}/users/${userId}/workoutSheets/${sheetId}/items`;
+
+                const batch = writeBatch(db);
+                itemsToAdd.forEach(itemData => {
+                    maxOrder++;
+                    const newItem = {
+                        ...itemData,
+                        order: maxOrder,
+                        isDone: false,
+                        isDeactivated: false,
+                        createdAt: serverTimestamp()
+                    };
+                    const itemRef = doc(collection(db, collectionPath));
+                    batch.set(itemRef, newItem);
+                });
+
+                await batch.commit();
+                closeModal();
+                showToast(`${itemsToAdd.length} elemento(i) aggiunto(i) alla scheda.`, 'success');
+            } catch (e) {
+                console.error("Errore aggiunta elementi alla scheda:", e);
+                showToast("Errore durante l'aggiunta.", 'error');
+            }
+        }
+        
+        async function resetSheetDoneStatus(sheetId) {
+            const { userId } = state;
+            if (!userId) return showToast("Utente non autenticato.", 'error');
+            showConfirm("Resetta Stato", "Sei sicuro di voler segnare tutti gli esercizi di questa scheda come 'da fare'?", async () => {
+                const items = state.sheetItems[sheetId] || [];
+                const batch = writeBatch(db);
+                const collectionPath = `/artifacts/${appId}/users/${userId}/workoutSheets/${sheetId}/items`;
+                items.forEach(item => {
+                    if (item.type === 'exercise') {
+                        const itemRef = doc(db, collectionPath, item.id);
+                        batch.update(itemRef, { isDone: false });
+                    }
+                });
+                try {
+                    await batch.commit();
+                    showToast("Stato degli esercizi resettato.", 'success');
+                } catch(e) { console.error(e); showToast("Errore durante il reset.", 'error'); }
+            });
+        }
+        
+        async function toggleSheetItemDone(sheetId, itemId, isDone) {
+            const { userId } = state;
+            if (!userId) return;
+            try {
+                const docRef = doc(db, `/artifacts/${appId}/users/${userId}/workoutSheets/${sheetId}/items`, itemId);
+                await updateDoc(docRef, { isDone });
+            } catch(e) { console.error(e); showToast("Errore aggiornamento stato.", 'error'); }
+        }
+        
+        async function reorderSheetItem(sheetId, itemId, direction) {
+            const { userId } = state;
+            if (!userId) return;
+            const items = [...(state.sheetItems[sheetId] || [])].sort((a,b) => a.order - b.order);
+            const currentIndex = items.findIndex(item => item.id === itemId);
+            if (currentIndex === -1) return;
+
+            const targetIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
+            if (targetIndex < 0 || targetIndex >= items.length) return;
+
+            const currentItem = items[currentIndex];
+            const targetItem = items[targetIndex];
+            
+            const batch = writeBatch(db);
+            const collectionPath = `/artifacts/${appId}/users/${userId}/workoutSheets/${sheetId}/items`;
+            const currentRef = doc(db, collectionPath, currentItem.id);
+            const targetRef = doc(db, collectionPath, targetItem.id);
+
+            batch.update(currentRef, { order: targetItem.order });
+            batch.update(targetRef, { order: currentItem.order });
+
+            try {
+                await batch.commit();
+            } catch(e) { console.error(e); showToast("Errore riordinamento.", 'error'); }
+        }
+
+        async function deleteSheetItem(sheetId, itemId) {
+            const { userId } = state;
+            if (!userId) return;
+             showConfirm("Elimina Elemento", "Sei sicuro di voler eliminare questo elemento dalla scheda?", async () => {
+                 try {
+                    const docRef = doc(db, `/artifacts/${appId}/users/${userId}/workoutSheets/${sheetId}/items`, itemId);
+                     await deleteDoc(docRef);
+                     showToast("Elemento rimosso.", 'success');
+                 } catch(e) { console.error(e); showToast("Errore eliminazione.", 'error'); }
+             });
+        }
+        
+        function openSheetItemActions(sheetId, itemId) {
+            const item = (state.sheetItems[sheetId] || []).find(i => i.id === itemId);
+            if (!item) return;
+
+            const editAction = item.type === 'pause' || item.type === 'text' ? `
+                <button id="edit-item-btn" class="material-button material-button-text w-full justify-start">Modifica</button>` : '';
+
+            const colorAction = item.type === 'exercise' ? `
+                <div class="mt-2">
+                    <p class="text-sm font-medium mb-2">Assegna colore:</p>
+                    <div class="flex flex-wrap gap-2">
+                        ${COLORS.map(c => `<div onclick="window.app.updateSheetItemColor('${sheetId}','${itemId}','${c}')" class="color-dot ${item.color === c ? 'selected' : ''}" style="background-color:${c}"></div>`).join('')}
+                    </div>
+                </div>
+            ` : '';
+            
+            modalContainer.innerHTML = `
+                <div class="modal-content p-6">
+                    <h3 class="text-xl font-medium mb-4">Azioni Elemento</h3>
+                    <div class="space-y-2">
+                        ${editAction}
+                        <button id="toggle-deactivate-btn" class="material-button material-button-text w-full justify-start">${item.isDeactivated ? 'Riattiva' : 'Disattiva Temporaneamente'}</button>
+                        <button id="delete-item-btn" class="material-button material-button-text w-full justify-start text-red-600">Elimina dalla scheda</button>
+                        ${colorAction}
+                    </div>
+                     <div class="flex justify-end gap-2 mt-6">
+                        <button onclick="window.app.closeModal()" class="material-button material-button-text">Chiudi</button>
+                    </div>
+                </div>
+            `;
+            
+            if (document.getElementById('edit-item-btn')) {
+                document.getElementById('edit-item-btn').onclick = () => editSheetItem(sheetId, itemId, item.type);
+            }
+            document.getElementById('toggle-deactivate-btn').onclick = () => toggleSheetItemDeactivated(sheetId, itemId, !item.isDeactivated);
+            document.getElementById('delete-item-btn').onclick = () => { closeModal(); deleteSheetItem(sheetId, itemId); };
+
+            modalContainer.classList.remove('hidden');
+        }
+
+        async function toggleSheetItemDeactivated(sheetId, itemId, isDeactivated) {
+            const { userId } = state;
+            if (!userId) return;
+            try {
+                const docRef = doc(db, `/artifacts/${appId}/users/${userId}/workoutSheets/${sheetId}/items`, itemId);
+                await updateDoc(docRef, { isDeactivated });
+                closeModal();
+                showToast(`Elemento ${isDeactivated ? 'disattivato' : 'riattivato'}.`, 'success');
+            } catch(e) { console.error(e); showToast("Errore aggiornamento.", 'error'); }
+        }
+
+        async function updateSheetItemColor(sheetId, itemId, color) {
+            const { userId } = state;
+            if (!userId) return;
+             try {
+                const docRef = doc(db, `/artifacts/${appId}/users/${userId}/workoutSheets/${sheetId}/items`, itemId);
+                await updateDoc(docRef, { color });
+                closeModal();
+            } catch(e) { console.error(e); showToast("Errore aggiornamento colore.", 'error'); }
+        }
+        
+        function editSheetItem(sheetId, itemId, type) {
+            const item = (state.sheetItems[sheetId] || []).find(i => i.id === itemId);
+            if (!item) return;
+            
+            let content = '';
+            if (type === 'pause') {
+                const minutes = Math.floor(item.duration / 60);
+                const seconds = item.duration % 60;
+                content = `
+                    <h3 class="text-xl font-medium mb-4">Modifica Pausa</h3>
+                    <div class="flex gap-2 items-center">
+                        <input type="number" id="pause-minutes" placeholder="Minuti" class="input-field !p-2 w-1/2" value="${minutes}">
+                        <input type="number" id="pause-seconds" placeholder="Secondi" class="input-field !p-2 w-1/2" value="${seconds}">
+                    </div>`;
+            } else { // text
+                content = `
+                    <h3 class="text-xl font-medium mb-4">Modifica Testo</h3>
+                    <textarea id="text-content" class="input-field min-h-[100px]">${item.text}</textarea>`;
+            }
+            
+            modalContainer.innerHTML = `
+                <div class="modal-content p-6">
+                    ${content}
+                    <div class="flex justify-end gap-2 mt-6">
+                        <button onclick="window.app.closeModal()" class="material-button material-button-text">Annulla</button>
+                        <button id="save-item-changes-btn" class="material-button material-button-filled">Salva Modifiche</button>
+                    </div>
+                </div>
+            `;
+            document.getElementById('save-item-changes-btn').onclick = async () => {
+                const { userId } = state;
+                if (!userId) return;
+                let data = {};
+                if (type === 'pause') {
+                    const minutes = parseInt(document.getElementById('pause-minutes').value) || 0;
+                    const seconds = parseInt(document.getElementById('pause-seconds').value) || 0;
+                    data.duration = minutes * 60 + seconds;
+                } else {
+                    data.text = document.getElementById('text-content').value.trim();
+                }
+                try {
+                    const docRef = doc(db, `/artifacts/${appId}/users/${userId}/workoutSheets/${sheetId}/items`, itemId);
+                    await updateDoc(docRef, data);
+                    closeModal();
+                    showToast("Elemento aggiornato.", 'success');
+                } catch(e) { console.error(e); showToast("Errore aggiornamento.", 'error'); }
+            };
+        }
+
+        // --- LOGICA TIMER ---
+        function stopAllTimers() {
+            Object.values(state.timers).forEach(timer => {
+                if (timer.intervalId) clearInterval(timer.intervalId);
+            });
+            state.timers = {};
+        }
+
+        function toggleTimer(itemId, duration) {
+            const timerId = `timer-${itemId}`;
+            if (state.timers[timerId]?.intervalId) { // Sta andando, mettilo in pausa
+                clearInterval(state.timers[timerId].intervalId);
+                state.timers[timerId].intervalId = null;
+            } else { // È in pausa o non partito, avvialo
+                if (!state.timers[timerId]) {
+                    state.timers[timerId] = { remaining: duration, isFinished: false };
+                }
+                state.timers[timerId].isFinished = false;
+                state.timers[timerId].intervalId = setInterval(() => {
+                    state.timers[timerId].remaining--;
+                    const timerEl = document.getElementById(timerId);
+                    if (timerEl) timerEl.innerText = formatTime(state.timers[timerId].remaining);
+                    if (state.timers[timerId].remaining <= 0) {
+                        clearInterval(state.timers[timerId].intervalId);
+                        state.timers[timerId].intervalId = null;
+                        state.timers[timerId].isFinished = true;
+                        if (timerEl) timerEl.classList.add('blinking');
+                    }
+                }, 1000);
+            }
+             render(); // Aggiorna UI per bottone play/pausa
+        }
+
+        function resetTimer(itemId, duration) {
+            const timerId = `timer-${itemId}`;
+            if (state.timers[timerId]?.intervalId) {
+                clearInterval(state.timers[timerId].intervalId);
+            }
+            state.timers[timerId] = { remaining: duration, intervalId: null, isFinished: false };
+            const timerEl = document.getElementById(timerId);
+            if(timerEl) {
+                timerEl.innerText = formatTime(duration);
+                timerEl.classList.remove('blinking');
+            }
+            render();
+        }
+
+        // --- SETUP INIZIALE ---
+        
+        window.app = { // Rendi le funzioni accessibili dall'HTML
+            closeModal,
+            openCategoryModal, deleteCategory,
+            openExerciseModal, deleteExercise,
+            openAddHistoryModal, deleteHistoryItem,
+            addParameterField() {
+                const container = document.getElementById('parameters-list');
+                const div = document.createElement('div');
+                div.className = "flex items-center gap-2";
+                div.innerHTML = `
+                    <input type="text" class="input-field !p-2 flex-grow" placeholder="Es: Peso, Ripetizioni...">
+                    <button onclick="this.parentElement.remove()" class="material-button-text p-2 rounded-full"><span class="material-icons">remove_circle_outline</span></button>
+                `;
+                container.appendChild(div);
+            },
+            addParamSet(paramId) {
+                const container = document.getElementById(`sets-for-${paramId}`);
+                const index = container.children.length;
+                const div = document.createElement('div');
+                div.className = "flex gap-2 items-center";
+                div.dataset.setIndex = index;
+                div.innerHTML = `
+                    <input type="text" placeholder="" class="input-field !p-2 flex-1">
+                    <input type="text" placeholder="" class="input-field !p-2 flex-1">
+                    <input type="text" placeholder="" class="input-field !p-2 flex-1">
+                    <button onclick="this.parentElement.remove()" class="material-button-text p-2 rounded-full"><span class="material-icons">remove_circle_outline</span></button>
+                `;
+                container.appendChild(div);
+            },
+            openSheetModal, deleteSheet, addItemsToSheet, resetSheetDoneStatus,
+            toggleSheetItemDone, reorderSheetItem, openSheetItemActions,
+            deleteSheetItem, updateSheetItemColor,
+            toggleTimer, resetTimer
+        };
+        
+        function startApp() {
+            const { userId } = state;
+            if (!userId) {
+                console.error("startApp called without userId.");
+                return;
+            }
+
+            Object.keys(navs).forEach(key => {
+                navs[key].forEach(nav => nav.onclick = () => {
+                    stopAllTimers();
+                    navigate(key);
+                });
+            });
+            
+            document.getElementById('search-exercises').addEventListener('input', renderDbPage);
+            document.getElementById('sort-exercises').addEventListener('change', renderDbPage);
+            document.getElementById('search-history').addEventListener('input', renderHistoryPage);
+            document.getElementById('search-history-date').addEventListener('change', renderHistoryPage);
+            document.getElementById('search-sheets').addEventListener('input', renderSheetsPage);
+            document.getElementById('add-category-btn').onclick = () => openCategoryModal();
+            
+            const basePath = `/artifacts/${appId}/users/${userId}`;
+
+            // Listeners di Firebase
+            onSnapshot(query(collection(db, `${basePath}/categories`), orderBy("name")), s => { state.categories = s.docs.map(d=>({id:d.id,...d.data()})); render(); }, e => console.error("categories listener error:", e));
+            onSnapshot(query(collection(db, `${basePath}/exercises`)), s => { state.exercises = s.docs.map(d=>({id:d.id,...d.data()})); render(); }, e => console.error("exercises listener error:", e));
+            onSnapshot(query(collection(db, `${basePath}/exerciseHistory`), orderBy("timestamp", "desc")), s => { state.history = s.docs.map(d=>({id:d.id,...d.data()})); render(); }, e => console.error("exerciseHistory listener error:", e));
+            onSnapshot(query(collection(db, `${basePath}/workoutSheets`), orderBy("name")), s => {
+                const newSheets = s.docs.map(d=>({id:d.id,...d.data()}));
+                const newSheetIds = newSheets.map(sh => sh.id);
+                newSheetIds.forEach(id => {
+                    if (!state.listeners[id]) { // Avvia listener solo se non esiste già
+                         state.listeners[id] = onSnapshot(query(collection(db, `${basePath}/workoutSheets/${id}/items`)), (snapshot) => {
+                            state.sheetItems[id] = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                            if(state.currentPage === 'sheets') render();
+                        });
+                    }
+                });
+                state.sheets = newSheets;
+                render();
+            }, e => console.error("workoutSheets listener error:", e));
+            
+            navigate(state.currentPage);
+        }
+
+        // Esegui l'autenticazione e poi avvia l'app
+        (async () => {
+            try {
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                    await signInAnonymously(auth);
+                }
+                state.userId = auth.currentUser.uid;
+                console.log("Authentication successful. UserID:", state.userId);
+                startApp(); // Avvia l'app solo dopo l'autenticazione
+            } catch (error) {
+                console.error("Authentication failed:", error);
+                document.body.innerHTML = `<div class="p-4 text-red-700 bg-red-100">Errore di autenticazione: ${error.message}</div>`;
+            }
+        })();
+
+    </script>
+</body>
+</html>
+
