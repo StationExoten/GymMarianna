@@ -389,13 +389,14 @@
         function renderDbPage() {
             const list = document.getElementById('categories-list');
             if (!list) return;
-            
+
+            const expansionState = getExpansionState();
             const searchTerm = document.getElementById('search-exercises').value.toLowerCase();
             const sortOption = document.getElementById('sort-exercises').value;
 
             let filteredExercises = state.exercises.filter(ex => 
                 ex.name.toLowerCase().includes(searchTerm) ||
-                ex.zone.toLowerCase().includes(searchTerm) ||
+                (ex.zone && ex.zone.toLowerCase().includes(searchTerm)) ||
                 state.categories.find(c => c.id === ex.categoryId)?.name.toLowerCase().includes(searchTerm)
             );
 
@@ -410,7 +411,7 @@
                         return catA.localeCompare(catB);
                     });
                     break;
-                case 'bodypart': filteredExercises.sort((a, b) => a.zone.localeCompare(b.zone)); break;
+                case 'bodypart': filteredExercises.sort((a, b) => (a.zone || '').localeCompare(b.zone || '')); break;
                 case 'updatedAt_desc': filteredExercises.sort((a, b) => (b.updatedAt?.seconds || 0) - (a.updatedAt?.seconds || 0)); break;
                 case 'createdAt_desc': filteredExercises.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0)); break;
             }
@@ -435,30 +436,37 @@
             list.innerHTML = allCategories.map(cat => {
                 const exercises = exercisesByCategory[cat.id] || [];
                 if (cat.id === 'uncategorized' && exercises.length === 0) return '';
+                
+                const isExpanded = expansionState.categories.includes(cat.id);
                 return `
-                    <div class="material-card p-4">
-                        <div class="flex justify-between items-center mb-2">
-                            <div>
-                                <h3 class="text-xl font-medium text-[#49454f]">${cat.name}</h3>
-                                ${cat.description ? `<p class="text-sm text-gray-500">${cat.description}</p>` : ''}
-                            </div>
-                            ${cat.id !== 'uncategorized' ? `
-                            <div class="flex items-center gap-2">
-                                <button onclick="window.app.openCategoryModal('${cat.id}')" class="material-button-text p-2 rounded-full"><span class="material-icons text-lg">edit</span></button>
-                                <button onclick="window.app.deleteCategory('${cat.id}')" class="material-button-text p-2 rounded-full"><span class="material-icons text-lg">delete</span></button>
-                            </div>` : ''}
-                        </div>
-                        <div class="border-t my-2"></div>
-                        <div class="space-y-2">
-                            ${exercises.length > 0 ? exercises.map(ex => `
-                                <div onclick="window.app.openExerciseModal('${ex.id}')" class="flex justify-between items-center p-2 rounded-lg hover:bg-gray-100 cursor-pointer">
-                                    <div>
-                                        <p class="font-medium">${ex.name}</p>
-                                        <p class="text-xs px-2 py-1 bg-purple-100 text-purple-700 rounded-full inline-block">${ex.zone}</p>
-                                    </div>
-                                    <span class="material-icons text-gray-400">chevron_right</span>
+                    <div class="material-card">
+                        <div class="p-4 cursor-pointer" onclick="window.app.toggleExpansion('category', '${cat.id}')">
+                            <div class="flex justify-between items-center">
+                                <div>
+                                    <h3 class="text-xl font-medium text-[#49454f]">${cat.name}</h3>
+                                    ${cat.description ? `<p class="text-sm text-gray-500">${cat.description}</p>` : ''}
                                 </div>
-                            `).join('') : '<p class="text-sm text-center text-gray-400 py-2">Nessun esercizio. Aggiungine uno con il pulsante flottante!</p>'}
+                                <div class="flex items-center gap-2">
+                                    ${cat.id !== 'uncategorized' ? `
+                                        <button onclick="event.stopPropagation(); window.app.openCategoryModal('${cat.id}')" class="material-button-text p-2 rounded-full"><span class="material-icons text-lg">edit</span></button>
+                                        <button onclick="event.stopPropagation(); window.app.deleteCategory('${cat.id}')" class="material-button-text p-2 rounded-full"><span class="material-icons text-lg">delete</span></button>
+                                    ` : ''}
+                                    <span id="icon-category-${cat.id}" class="material-icons transition-transform transform ${isExpanded ? 'rotate-180' : ''}">expand_more</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div id="content-category-${cat.id}" style="display: ${isExpanded ? 'block' : 'none'}" class="border-t">
+                            <div class="p-2 space-y-2">
+                                ${exercises.length > 0 ? exercises.map(ex => `
+                                    <div onclick="window.app.openExerciseModal('${ex.id}')" class="flex justify-between items-center p-2 rounded-lg hover:bg-gray-100 cursor-pointer">
+                                        <div>
+                                            <p class="font-medium">${ex.name}</p>
+                                            ${ex.zone ? `<p class="text-xs px-2 py-1 bg-purple-100 text-purple-700 rounded-full inline-block">${ex.zone}</p>` : ''}
+                                        </div>
+                                        <span class="material-icons text-gray-400">chevron_right</span>
+                                    </div>
+                                `).join('') : '<p class="text-sm text-center text-gray-400 py-2">Nessun esercizio. Aggiungine uno con il pulsante flottante!</p>'}
+                            </div>
                         </div>
                     </div>
                 `;
@@ -557,6 +565,7 @@
             `).join('');
         }
 
+        // --- MODIFICA INIZIO ---
         // Rendering Schede
         function renderSheetsPage() {
             const list = document.getElementById('sheets-list');
@@ -565,9 +574,10 @@
             const searchTerm = document.getElementById('search-sheets').value.toLowerCase();
             const expansionState = getExpansionState();
 
-            let filteredSheets = state.sheets.filter(sheet => {
+            // Filtra le schede PRIMA di raggrupparle
+            const filteredSheets = state.sheets.filter(sheet => {
                 if (searchTerm === '') return true;
-                if (sheet.name.toLowerCase().includes(searchTerm) || sheet.description.toLowerCase().includes(searchTerm)) {
+                if (sheet.name.toLowerCase().includes(searchTerm) || (sheet.description && sheet.description.toLowerCase().includes(searchTerm))) {
                     return true;
                 }
                 const items = state.sheetItems[sheet.id] || [];
@@ -576,10 +586,11 @@
                     const exercise = state.exercises.find(ex => ex.id === item.exerciseId);
                     if (!exercise) return false;
                     const category = state.categories.find(c => c.id === exercise.categoryId);
-                    return exercise.name.toLowerCase().includes(searchTerm) || category?.name.toLowerCase().includes(searchTerm);
+                    return exercise.name.toLowerCase().includes(searchTerm) || (category && category.name.toLowerCase().includes(searchTerm));
                 });
             });
 
+            // Raggruppa le schede FILTRATE
             const sheetsByContainer = filteredSheets.reduce((acc, sheet) => {
                 const containerId = sheet.containerId || 'unassigned';
                 if (!acc[containerId]) acc[containerId] = [];
@@ -591,8 +602,9 @@
                 list.innerHTML = `<p class="text-center text-gray-500">Nessuna scheda o contenitore. Inizia creando una scheda con il pulsante flottante o un contenitore.</p>`;
                 return;
             }
-
-            let html = state.sheetContainers.map(container => {
+            
+            // Renderizza i contenitori
+            let html = state.sheetContainers.map((container, index, allContainers) => {
                 const sheets = sheetsByContainer[container.id] || [];
                 if (searchTerm !== '' && sheets.length === 0) return ''; // Nasconde contenitori vuoti durante la ricerca
 
@@ -601,11 +613,16 @@
                     <div class="material-card bg-blue-50">
                         <div class="p-4 cursor-pointer" onclick="window.app.toggleExpansion('container', '${container.id}')">
                             <div class="flex justify-between items-center">
-                                <div class="flex items-center gap-2">
-                                    <span class="material-icons text-blue-600">folder</span>
-                                    <h3 class="text-xl font-medium">${container.name}</h3>
+                                <div>
+                                    <div class="flex items-center gap-2">
+                                        <span class="material-icons text-blue-600">folder</span>
+                                        <h3 class="text-xl font-medium">${container.name}</h3>
+                                    </div>
+                                    ${container.description ? `<p class="text-sm text-gray-600 mt-1 ml-8">${container.description}</p>` : ''}
                                 </div>
                                 <div class="flex items-center">
+                                    <button ${index === 0 ? 'disabled' : ''} onclick="event.stopPropagation(); window.app.reorderEntity('container', '${container.id}', 'up')" class="material-button-text p-2 rounded-full disabled:opacity-25"><span class="material-icons text-lg">arrow_upward</span></button>
+                                    <button ${index === allContainers.length - 1 ? 'disabled' : ''} onclick="event.stopPropagation(); window.app.reorderEntity('container', '${container.id}', 'down')" class="material-button-text p-2 rounded-full disabled:opacity-25"><span class="material-icons text-lg">arrow_downward</span></button>
                                     <button onclick="event.stopPropagation(); window.app.openContainerModal('${container.id}')" class="material-button-text p-2 rounded-full"><span class="material-icons text-lg">edit</span></button>
                                     <button onclick="event.stopPropagation(); window.app.deleteContainer('${container.id}')" class="material-button-text p-2 rounded-full"><span class="material-icons text-lg">delete</span></button>
                                     <span id="icon-container-${container.id}" class="material-icons transition-transform transform ${isExpanded ? 'rotate-180' : ''}">expand_more</span>
@@ -613,7 +630,7 @@
                             </div>
                         </div>
                         <div id="content-container-${container.id}" style="display: ${isExpanded ? 'block' : 'none'}" class="border-t px-2 py-2 md:px-4 md:py-4 space-y-3">
-                           ${sheets.length > 0 ? sheets.map(sheet => renderSingleSheet(sheet, expansionState.sheets.includes(sheet.id))).join('') : '<p class="text-sm text-center text-gray-500 py-2">Nessuna scheda in questo contenitore.</p>'}
+                           ${sheets.length > 0 ? sheets.map((sheet, sheetIndex) => renderSingleSheet(sheet, expansionState.sheets.includes(sheet.id), sheetIndex, sheets.length)).join('') : '<p class="text-sm text-center text-gray-500 py-2">Nessuna scheda in questo contenitore.</p>'}
                         </div>
                     </div>
                 `;
@@ -626,7 +643,7 @@
                     <div class="mt-6">
                         <h4 class="text-gray-500 font-medium mb-2 ml-1">Schede non assegnate</h4>
                         <div class="space-y-4">
-                           ${unassignedSheets.map(sheet => renderSingleSheet(sheet, expansionState.sheets.includes(sheet.id))).join('')}
+                           ${unassignedSheets.map((sheet, sheetIndex) => renderSingleSheet(sheet, expansionState.sheets.includes(sheet.id), sheetIndex, unassignedSheets.length)).join('')}
                         </div>
                     </div>`;
             }
@@ -634,16 +651,22 @@
             list.innerHTML = html;
         }
 
-        function renderSingleSheet(sheet, isExpanded) {
+        function renderSingleSheet(sheet, isExpanded, index, totalInList) {
              return `
                 <div class="material-card !shadow-sm hover:!shadow-md">
                     <div class="p-4 cursor-pointer" onclick="window.app.toggleExpansion('sheet', '${sheet.id}')">
                          <div class="flex justify-between items-center">
-                            <div>
-                                <h3 class="text-lg font-medium">${sheet.name}</h3>
-                                <p class="text-sm text-gray-500">${sheet.description}</p>
+                            <div class="flex items-center">
+                                <div class="flex flex-col mr-2">
+                                    <button ${index === 0 ? 'disabled' : ''} onclick="event.stopPropagation(); window.app.reorderEntity('sheet', '${sheet.id}', 'up')" class="material-button-text !p-1 !min-w-0 h-6 rounded-full disabled:opacity-25"><span class="material-icons text-lg">arrow_drop_up</span></button>
+                                    <button ${index === totalInList - 1 ? 'disabled' : ''} onclick="event.stopPropagation(); window.app.reorderEntity('sheet', '${sheet.id}', 'down')" class="material-button-text !p-1 !min-w-0 h-6 rounded-full disabled:opacity-25"><span class="material-icons text-lg">arrow_drop_down</span></button>
+                                </div>
+                                <div>
+                                    <h3 class="text-lg font-medium">${sheet.name}</h3>
+                                    <p class="text-sm text-gray-500">${sheet.description || ''}</p>
+                                </div>
                             </div>
-                             <span id="icon-sheet-${sheet.id}" class="material-icons transition-transform transform ${isExpanded ? 'rotate-180' : ''}">expand_more</span>
+                            <span id="icon-sheet-${sheet.id}" class="material-icons transition-transform transform ${isExpanded ? 'rotate-180' : ''}">expand_more</span>
                          </div>
                     </div>
                     <div id="content-sheet-${sheet.id}" style="display: ${isExpanded ? 'block' : 'none'}" class="border-t">
@@ -665,6 +688,7 @@
                 </div>
             `;
         }
+        // --- MODIFICA FINE ---
         
         function renderSheetItems(sheetId) {
             const items = (state.sheetItems[sheetId] || []).sort((a,b) => a.order - b.order);
@@ -799,14 +823,12 @@
             const okButton = document.getElementById('confirm-ok');
             const cancelButton = document.getElementById('confirm-cancel');
             
-            // Applica la classe corretta al bottone OK in base al titolo (es. per Logout)
             okButton.className = 'material-button material-button-filled';
             if (title.toLowerCase().includes('logout') || title.toLowerCase().includes('eliminazione')) {
                  okButton.classList.add('bg-red-600', 'hover:bg-red-700');
             } else {
                  okButton.classList.remove('bg-red-600', 'hover:bg-red-700');
             }
-
 
             confirmModal.classList.remove('hidden');
 
@@ -851,16 +873,24 @@
 
         function getExpansionState() {
             try {
-                const state = JSON.parse(localStorage.getItem(EXPANSION_STATE_KEY));
-                return state || { containers: [], sheets: [] };
+                const savedState = JSON.parse(localStorage.getItem(EXPANSION_STATE_KEY)) || {};
+                return {
+                    containers: savedState.containers || [],
+                    sheets: savedState.sheets || [],
+                    categories: savedState.categories || [],
+                };
             } catch (e) {
-                return { containers: [], sheets: [] };
+                return { containers: [], sheets: [], categories: [] };
             }
         }
 
         function saveExpansionState(type, id, isExpanded) {
             const state = getExpansionState();
-            const key = type === 'container' ? 'containers' : 'sheets';
+            let key;
+            if (type === 'container') key = 'containers';
+            else if (type === 'sheet') key = 'sheets';
+            else if (type === 'category') key = 'categories';
+            else return;
             
             const set = new Set(state[key]);
             if (isExpanded) {
@@ -876,6 +906,8 @@
         function toggleExpansion(type, id) {
             const content = document.getElementById(`content-${type}-${id}`);
             const icon = document.getElementById(`icon-${type}-${id}`);
+            if (!content) return;
+            
             const isExpanded = content.style.display !== 'none';
 
             content.style.display = isExpanded ? 'none' : 'block';
@@ -913,12 +945,17 @@
         function openExerciseModal(id = null) { 
             const exercise = id ? state.exercises.find(e => e.id === id) : null;
             const title = exercise ? 'Dettagli Esercizio' : 'Nuovo Esercizio';
+            let subtitle = '';
+            if (exercise) {
+                const categoryName = state.categories.find(c=>c.id === exercise.categoryId)?.name;
+                subtitle = [exercise.zone, categoryName].filter(Boolean).join(' - ');
+            }
             
             modalContainer.innerHTML = `
                 <div class="modal-content flex flex-col">
                     <div class="p-6 border-b">
                         <h3 class="text-xl font-medium">${title}</h3>
-                        ${exercise ? `<p class="text-sm text-gray-500">${exercise.zone} - ${state.categories.find(c=>c.id === exercise.categoryId)?.name || 'N/A'}</p>`:''}
+                        ${subtitle ? `<p class="text-sm text-gray-500">${subtitle}</p>`:''}
                     </div>
                     <div class="flex border-b">
                         <button id="tab-info" class="tab-button flex-1 active">Info</button>
@@ -1004,6 +1041,7 @@
                     <h3 class="text-xl font-medium mb-6">${title}</h3>
                     <div class="space-y-4">
                         <input type="text" id="container-name" placeholder="Nome Contenitore" class="input-field" value="${container?.name || ''}">
+                        <textarea id="container-description" placeholder="Descrizione (opzionale)" class="input-field min-h-[100px]">${container?.description || ''}</textarea>
                     </div>
                     <div class="flex justify-end gap-2 mt-6">
                         <button onclick="window.app.closeModal()" class="material-button material-button-text">Annulla</button>
@@ -1106,22 +1144,51 @@
                 const listContainer = document.getElementById('exercise-selection-list');
                 if (!listContainer) return;
                 
-                listContainer.innerHTML = state.categories.map(cat => `
-                    <div>
-                        <h4 class="font-bold text-gray-600">${cat.name}</h4>
-                        ${state.exercises.filter(ex => ex.categoryId === cat.id).map(ex => {
-                            const selectionIndex = selectionOrder.indexOf(ex.id);
-                            const isSelected = selectionIndex !== -1;
-                            return `
-                                <div data-exercise-id="${ex.id}" class="flex items-center gap-3 p-2 rounded hover:bg-gray-100 cursor-pointer">
-                                    <div class="w-6 h-6 flex items-center justify-center rounded-full text-sm font-bold border-2 ${isSelected ? 'bg-purple-600 border-purple-600 text-white' : 'border-gray-300'}">
-                                        ${isSelected ? (selectionIndex + 1) : ''}
-                                    </div>
-                                    <span>${ex.name}</span>
-                                </div>`;
-                        }).join('')}
-                    </div>
-                `).join('');
+                const searchTerm = document.getElementById('search-exercises-in-modal')?.value.toLowerCase() || '';
+
+                let filteredExercises = state.exercises.filter(ex => {
+                    if (!searchTerm) return true;
+                    const category = state.categories.find(c => c.id === ex.categoryId);
+                    return ex.name.toLowerCase().includes(searchTerm) ||
+                           (ex.zone && ex.zone.toLowerCase().includes(searchTerm)) ||
+                           (category && category.name.toLowerCase().includes(searchTerm));
+                });
+                
+                const exercisesByCategory = filteredExercises.reduce((acc, ex) => {
+                    const catId = ex.categoryId || 'uncategorized';
+                    if (!acc[catId]) acc[catId] = [];
+                    acc[catId].push(ex);
+                    return acc;
+                }, {});
+
+                const allCategories = [...state.categories, {id: 'uncategorized', name: 'Non Categorizzati'}];
+                
+                let html = allCategories.map(cat => {
+                    const exercises = exercisesByCategory[cat.id] || [];
+                    if (exercises.length === 0) return ''; 
+
+                    return `
+                        <div>
+                            <h4 class="font-bold text-gray-600 mt-2 first:mt-0">${cat.name}</h4>
+                            ${exercises.map(ex => {
+                                const selectionIndex = selectionOrder.indexOf(ex.id);
+                                const isSelected = selectionIndex !== -1;
+                                return `
+                                    <div data-exercise-id="${ex.id}" class="flex items-center gap-3 p-2 rounded hover:bg-gray-100 cursor-pointer">
+                                        <div class="w-6 h-6 flex items-center justify-center rounded-full text-sm font-bold border-2 ${isSelected ? 'bg-purple-600 border-purple-600 text-white' : 'border-gray-300'}">
+                                            ${isSelected ? (selectionIndex + 1) : ''}
+                                        </div>
+                                        <span>${ex.name}</span>
+                                    </div>`;
+                            }).join('')}
+                        </div>`;
+                }).join('');
+
+                if (filteredExercises.length === 0) {
+                    html = '<p class="text-center text-gray-500 p-4">Nessun esercizio trovato.</p>';
+                }
+
+                listContainer.innerHTML = html;
             }
             
             modalContainer.innerHTML = `
@@ -1146,8 +1213,14 @@
                 
                 switch(type) {
                     case 'exercise':
-                        contentDiv.innerHTML = `<div id="exercise-selection-list" class="max-h-60 overflow-y-auto space-y-2 border p-2 rounded"></div>`;
-                        renderExerciseSelection();
+                        contentDiv.innerHTML = `
+                            <input type="text" id="search-exercises-in-modal" placeholder="Cerca per nome, zona o categoria..." class="input-field mb-2">
+                            <div id="exercise-selection-list" class="max-h-60 overflow-y-auto space-y-2 border p-2 rounded"></div>
+                        `;
+                        document.getElementById('search-exercises-in-modal').addEventListener('input', renderExerciseSelection);
+                        
+                        renderExerciseSelection(); 
+                        
                         const listContainer = document.getElementById('exercise-selection-list');
                         if (listContainer) {
                             listContainer.addEventListener('click', (event) => {
@@ -1213,7 +1286,7 @@
                 <div class="space-y-4">
                     <input type="text" id="exercise-name" placeholder="Nome Esercizio" class="input-field" value="${exercise?.name || ''}">
                     <select id="exercise-zone" class="input-field">
-                        <option value="">Seleziona Zona Allenamento</option>
+                        <option value="">Seleziona Zona Allenamento (Opzionale)</option>
                         ${ZONES.map(z => `<option value="${z}" ${exercise?.zone === z ? 'selected' : ''}>${z}</option>`).join('')}
                     </select>
                     <select id="exercise-category" class="input-field">
@@ -1328,7 +1401,7 @@
                     const batch = writeBatch(db);
                     exercisesInCategory.forEach(ex => {
                         const exRef = doc(db, `/users/${userId}/exercises`, ex.id);
-                        batch.update(exRef, { categoryId: '' });
+                        batch.update(exRef, { categoryId: null });
                     });
                     const catRef = doc(db, `/users/${userId}/categories`, id);
                     batch.delete(catRef);
@@ -1345,10 +1418,10 @@
             const { userId } = state;
             if (!userId) return showToast("Utente non autenticato.", 'error');
             const name = document.getElementById('exercise-name').value.trim();
-            const zone = document.getElementById('exercise-zone').value;
-            const categoryId = document.getElementById('exercise-category').value;
+            const zone = document.getElementById('exercise-zone').value || null; // Salva null se vuoto
+            const categoryId = document.getElementById('exercise-category').value || null; // Salva null se vuoto
             
-            if (!name || !zone) return showToast("Nome e Zona di Allenamento sono obbligatori.", 'error');
+            if (!name) return showToast("Il nome dell'esercizio è obbligatorio.", 'error');
 
             const parameters = Array.from(document.querySelectorAll('#parameters-list > div'))
                 .map(div => div.querySelector('input').value.trim())
@@ -1484,7 +1557,8 @@
                 }
             });
         }
-
+        
+        // --- MODIFICA INIZIO ---
         async function saveSheet(id = null) {
             const { userId } = state;
             if (!userId) return showToast("Utente non autenticato.", 'error');
@@ -1502,6 +1576,10 @@
                 if (id) {
                     await setDoc(doc(db, collectionPath, id), data, { merge: true });
                 } else {
+                    // Assegna un 'order' solo alla creazione
+                    const q = query(collection(db, collectionPath));
+                    const snapshot = await getDocs(q);
+                    data.order = snapshot.size; // Lo mette in fondo alla lista
                     data.createdAt = serverTimestamp();
                     await addDoc(collection(db, collectionPath), data);
                 }
@@ -1512,7 +1590,7 @@
                 showToast("Errore nel salvataggio.", 'error');
             }
         }
-
+        
         async function deleteSheet(id) {
             const { userId } = state;
             if (!userId) return showToast("Utente non autenticato.", 'error');
@@ -1536,14 +1614,19 @@
             const { userId } = state;
             if (!userId) return showToast("Utente non autenticato.", 'error');
             const name = document.getElementById('container-name').value.trim();
+            const description = document.getElementById('container-description').value.trim();
             if (!name) return showToast("Il nome del contenitore è obbligatorio.", 'error');
             
-            const data = { name, updatedAt: serverTimestamp() };
+            const data = { name, description, updatedAt: serverTimestamp() };
             const collectionPath = `/users/${userId}/sheetContainers`;
             try {
                 if (id) {
                     await setDoc(doc(db, collectionPath, id), data, { merge: true });
                 } else {
+                    // Assegna un 'order' solo alla creazione
+                    const q = query(collection(db, collectionPath));
+                    const snapshot = await getDocs(q);
+                    data.order = snapshot.size; // Lo mette in fondo alla lista
                     data.createdAt = serverTimestamp();
                     await addDoc(collection(db, collectionPath), data);
                 }
@@ -1554,6 +1637,7 @@
                 showToast("Errore durante il salvataggio.", 'error');
             }
         }
+        // --- MODIFICA FINE ---
 
         async function deleteContainer(id) {
             const { userId } = state;
@@ -1669,6 +1753,74 @@
                 await batch.commit();
             } catch(e) { console.error(e); showToast("Errore riordinamento.", 'error'); }
         }
+
+        // --- NUOVA FUNZIONE DI RIORDINAMENTO ---
+        async function reorderEntity(type, entityId, direction) {
+            const { userId } = state;
+            if (!userId) return;
+
+            let list;
+            let collectionPath;
+            
+            if (type === 'container') {
+                list = [...state.sheetContainers];
+                collectionPath = `/users/${userId}/sheetContainers`;
+            } else if (type === 'sheet') {
+                const currentSheet = state.sheets.find(s => s.id === entityId);
+                if (!currentSheet) return;
+
+                // Determina il gruppo di appartenenza (dentro un container o non assegnate)
+                if (currentSheet.containerId) {
+                    list = state.sheets.filter(s => s.containerId === currentSheet.containerId);
+                } else {
+                    list = state.sheets.filter(s => !s.containerId);
+                }
+                collectionPath = `/users/${userId}/workoutSheets`;
+            } else {
+                return; // Tipo non supportato
+            }
+
+            // Assicura che la lista sia ordinata (il listener già lo fa, ma è una sicurezza)
+            list.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+
+            const currentIndex = list.findIndex(item => item.id === entityId);
+            if (currentIndex === -1) return;
+
+            const targetIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
+            if (targetIndex < 0 || targetIndex >= list.length) return;
+
+            const currentItem = list[currentIndex];
+            const targetItem = list[targetIndex];
+
+            // Prepara il batch di scrittura
+            const batch = writeBatch(db);
+
+            // "Just-in-time migration": se qualche elemento non ha un 'order', assegnalo a tutti
+            const needsOrderMigration = list.some(item => typeof item.order !== 'number');
+            if (needsOrderMigration) {
+                list.forEach((item, index) => {
+                    const itemRef = doc(db, collectionPath, item.id);
+                    batch.update(itemRef, { order: index });
+                });
+                // Riassegna i valori corretti per lo scambio dopo la migrazione
+                currentItem.order = currentIndex;
+                targetItem.order = targetIndex;
+            }
+
+            // Scambia i valori di 'order'
+            const currentRef = doc(db, collectionPath, currentItem.id);
+            const targetRef = doc(db, collectionPath, targetItem.id);
+            batch.update(currentRef, { order: targetItem.order });
+            batch.update(targetRef, { order: currentItem.order });
+
+            try {
+                await batch.commit();
+            } catch (e) {
+                console.error("Errore durante il riordinamento:", e);
+                showToast("Errore durante il riordinamento.", 'error');
+            }
+        }
+
 
         async function deleteSheetItem(sheetId, itemId) {
             const { userId } = state;
@@ -1897,7 +2049,6 @@
                 newInput.type = 'text';
                 newInput.placeholder = '';
                 newInput.className = 'input-field !p-2 flex-1';
-                // Inserisce il nuovo input prima del pulsante "+"
                 buttonElement.parentElement.insertBefore(newInput, buttonElement);
             },
             openSheetModal, deleteSheet, addItemsToSheet, resetSheetDoneStatus,
@@ -1905,7 +2056,8 @@
             deleteSheetItem,
             toggleTimer, resetTimer,
             openContainerModal, deleteContainer,
-            toggleExpansion
+            toggleExpansion,
+            reorderEntity // --- NUOVA FUNZIONE ESPOSTA
         };
         
         function startApp() {
@@ -1932,16 +2084,18 @@
             
             const basePath = `/users/${userId}`;
 
-            // Listeners di Firebase
+            // --- MODIFICA QUERY FIRESTORE ---
             onSnapshot(query(collection(db, `${basePath}/categories`), orderBy("name")), s => { state.categories = s.docs.map(d=>({id:d.id,...d.data()})); render(); }, e => console.error("categories listener error:", e));
             onSnapshot(query(collection(db, `${basePath}/exercises`)), s => { state.exercises = s.docs.map(d=>({id:d.id,...d.data()})); render(); }, e => console.error("exercises listener error:", e));
             onSnapshot(query(collection(db, `${basePath}/exerciseHistory`), orderBy("timestamp", "desc")), s => { state.history = s.docs.map(d=>({id:d.id,...d.data()})); render(); }, e => console.error("exerciseHistory listener error:", e));
-            onSnapshot(query(collection(db, `${basePath}/sheetContainers`), orderBy("name")), s => { state.sheetContainers = s.docs.map(d=>({id:d.id,...d.data()})); render(); }, e => console.error("sheetContainers listener error:", e));
-            onSnapshot(query(collection(db, `${basePath}/workoutSheets`), orderBy("name")), s => {
+            
+            // Ordina per il nuovo campo 'order'
+            onSnapshot(query(collection(db, `${basePath}/sheetContainers`), orderBy("order")), s => { state.sheetContainers = s.docs.map(d=>({id:d.id,...d.data()})); render(); }, e => console.error("sheetContainers listener error:", e));
+            onSnapshot(query(collection(db, `${basePath}/workoutSheets`), orderBy("order")), s => {
                 const newSheets = s.docs.map(d=>({id:d.id,...d.data()}));
                 const newSheetIds = newSheets.map(sh => sh.id);
                 newSheetIds.forEach(id => {
-                    if (!state.listeners[id]) { // Avvia listener solo se non esiste già
+                    if (!state.listeners[id]) { 
                          state.listeners[id] = onSnapshot(query(collection(db, `${basePath}/workoutSheets/${id}/items`)), (snapshot) => {
                             state.sheetItems[id] = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                             if(state.currentPage === 'sheets') render();
@@ -1965,14 +2119,12 @@
         const passwordInput = document.getElementById('auth-password');
         const passwordToggle = document.getElementById('password-toggle');
 
-        // Toggle visibilità password
         passwordToggle.onclick = () => {
             const isPassword = passwordInput.type === 'password';
             passwordInput.type = isPassword ? 'text' : 'password';
             passwordToggle.querySelector('span').textContent = isPassword ? 'visibility' : 'visibility_off';
         };
 
-        // Funzione per il login
         loginBtn.onclick = async () => {
             const email = document.getElementById('auth-email').value;
             const password = passwordInput.value;
@@ -1983,14 +2135,12 @@
             }
             try {
                 await signInWithEmailAndPassword(auth, email, password);
-                // Il listener onAuthStateChanged gestirà il resto
             } catch (error) {
                 authError.textContent = "Credenziali non valide.";
                 console.error("Login failed:", error);
             }
         };
 
-        // Funzione per la registrazione
         registerBtn.onclick = async () => {
             const email = document.getElementById('auth-email').value;
             const password = passwordInput.value;
@@ -2001,7 +2151,6 @@
             }
             try {
                 await createUserWithEmailAndPassword(auth, email, password);
-                // Il listener onAuthStateChanged gestirà il resto
             } catch (error) {
                 if (error.code === 'auth/email-already-in-use') {
                     authError.textContent = "Email già in uso.";
@@ -2018,7 +2167,6 @@
             showConfirm('Conferma Logout', 'Sei sicuro di voler uscire?', async () => {
                 try {
                     await signOut(auth);
-                    // Ricarica la pagina per un reset pulito dello stato
                     window.location.reload();
                 } catch (error) {
                     console.error("Logout failed:", error);
@@ -2029,24 +2177,18 @@
 
         document.getElementById('logout-btn').onclick = handleLogout;
 
-
-        // Controlla lo stato dell'utente all'avvio
         onAuthStateChanged(auth, (user) => {
             if (user) {
-                // L'utente è loggato con un account permanente
                 console.log("Persistent user signed in. UserID:", user.uid);
                 state.userId = user.uid;
                 
-                // Nasconde il form di login e mostra l'app
                 authContainer.classList.add('hidden');
                 appContainer.classList.remove('hidden');
 
-                startApp(); // Avvia la tua app
+                startApp();
             } else {
-                // L'utente non è loggato
                 console.log("No persistent user signed in.");
                 
-                // Mostra il form di login e nasconde l'app
                 authContainer.classList.remove('hidden');
                 appContainer.classList.add('hidden');
             }
