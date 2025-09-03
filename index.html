@@ -5,8 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Workout Tracker</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js/dist/chart.umd.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
     <style>
@@ -20,7 +18,7 @@
             background-color: #fffbfe; /* Surface */
             border-radius: 12px;
             box-shadow: 0 1px 2px 0 rgba(0,0,0,0.1);
-            transition: box-shadow 0.2s ease-in-out;
+            transition: box-shadow 0.2s ease-in-out, background-color 0.3s ease;
         }
         .material-card:hover {
             box-shadow: 0 4px 8px 0 rgba(0,0,0,0.1);
@@ -114,6 +112,10 @@
             opacity: 0.5;
             background-color: #e0e0e0;
         }
+        .sheet-item.done {
+            background-color: #e8f5e9; /* Light green */
+        }
+
 
         /* Scrollbar styles */
         ::-webkit-scrollbar {
@@ -145,7 +147,6 @@
 </head>
 <body class="antialiased">
 
-    <!-- Header e Navigazione -->
     <header class="bg-white/80 backdrop-blur-md sticky top-0 z-40 shadow-sm">
         <div class="container mx-auto px-4">
             <div class="flex justify-between items-center py-4">
@@ -159,7 +160,6 @@
         </div>
     </header>
     
-    <!-- Navigazione Mobile in basso -->
     <nav class="md:hidden fixed bottom-0 left-0 right-0 bg-white shadow-t z-40 border-t">
         <div class="flex justify-around">
             <button id="nav-mobile-sheets" class="flex flex-col items-center justify-center p-2 text-gray-500 nav-item w-full">
@@ -178,10 +178,12 @@
     </nav>
 
     <main class="container mx-auto p-4 pb-20 md:pb-4">
-        <!-- Pagina Scheda Allenamento -->
         <div id="page-sheets" class="hidden">
             <div class="flex justify-between items-center mb-4">
                 <h2 class="text-2xl font-medium">Schede Allenamento</h2>
+                 <button id="add-container-btn" class="material-button material-button-outlined flex items-center gap-2">
+                    <span class="material-icons">create_new_folder</span> Contenitore
+                </button>
             </div>
             <div class="flex flex-col md:flex-row gap-2 mb-4">
                  <input type="text" id="search-sheets" placeholder="Cerca per nome scheda, esercizio, categoria..." class="input-field flex-grow">
@@ -189,7 +191,6 @@
             <div id="sheets-list" class="space-y-4"></div>
         </div>
 
-        <!-- Pagina Storico e Progressi -->
         <div id="page-history" class="hidden">
             <div class="flex justify-between items-center mb-4">
                 <h2 class="text-2xl font-medium">Storico e Progressi</h2>
@@ -201,7 +202,6 @@
             <div id="history-list" class="space-y-6"></div>
         </div>
 
-        <!-- Pagina Database Esercizi -->
         <div id="page-db" class="hidden">
             <div class="flex justify-between items-center mb-4">
                 <h2 class="text-2xl font-medium">Database Esercizi</h2>
@@ -224,17 +224,13 @@
         </div>
     </main>
 
-    <!-- Pulsante Flottante (FAB) -->
     <button id="fab" class="fab fixed bottom-24 right-4 md:bottom-8 md:right-8 flex items-center justify-center z-30 transition-transform transform hover:scale-110">
         <span class="material-icons">add</span>
     </button>
     
-    <!-- Contenitore Modals -->
     <div id="modal-container" class="fixed inset-0 z-50 flex items-center justify-center modal-backdrop hidden">
-        <!-- Contenuto del modal iniettato da JS -->
-    </div>
+        </div>
 
-    <!-- Modale di Conferma -->
     <div id="confirm-modal" class="fixed inset-0 z-[60] flex items-center justify-center modal-backdrop hidden">
         <div class="modal-content p-6">
             <h3 id="confirm-title" class="text-xl font-medium mb-4">Conferma</h3>
@@ -246,7 +242,6 @@
         </div>
     </div>
     
-    <!-- Contenitore Toast -->
     <div id="toast-container" class="fixed bottom-24 md:bottom-8 right-1/2 translate-x-1/2 z-[70] space-y-2"></div>
 
 
@@ -280,9 +275,9 @@
             exercises: [],
             history: [],
             sheets: [],
+            sheetContainers: [],
             sheetItems: {},
             listeners: {},
-            chartInstance: null,
             timers: {}
         };
         
@@ -525,11 +520,13 @@
         // Rendering Schede
         function renderSheetsPage() {
             const list = document.getElementById('sheets-list');
-            if(!list) return;
+            if (!list) return;
 
             const searchTerm = document.getElementById('search-sheets').value.toLowerCase();
-            
+            const expansionState = getExpansionState();
+
             let filteredSheets = state.sheets.filter(sheet => {
+                if (searchTerm === '') return true;
                 if (sheet.name.toLowerCase().includes(searchTerm) || sheet.description.toLowerCase().includes(searchTerm)) {
                     return true;
                 }
@@ -543,25 +540,73 @@
                 });
             });
 
-            if(filteredSheets.length === 0) {
-                list.innerHTML = `<p class="text-center text-gray-500">Nessuna scheda trovata. Creane una nuova con il pulsante flottante!</p>`;
+            const sheetsByContainer = filteredSheets.reduce((acc, sheet) => {
+                const containerId = sheet.containerId || 'unassigned';
+                if (!acc[containerId]) acc[containerId] = [];
+                acc[containerId].push(sheet);
+                return acc;
+            }, {});
+
+            if (state.sheets.length === 0 && state.sheetContainers.length === 0) {
+                list.innerHTML = `<p class="text-center text-gray-500">Nessuna scheda o contenitore. Inizia creando una scheda con il pulsante flottante o un contenitore.</p>`;
                 return;
             }
 
-            list.innerHTML = filteredSheets.map(sheet => {
-                 const isExpanded = document.getElementById(`sheet-content-${sheet.id}`)?.style.display !== 'none';
+            let html = state.sheetContainers.map(container => {
+                const sheets = sheetsByContainer[container.id] || [];
+                if (searchTerm !== '' && sheets.length === 0) return ''; // Nasconde contenitori vuoti durante la ricerca
+
+                const isExpanded = expansionState.containers.includes(container.id);
                 return `
-                <div class="material-card">
-                    <div class="p-4 cursor-pointer" onclick="const content = document.getElementById('sheet-content-${sheet.id}'); content.style.display = content.style.display === 'none' ? 'block' : 'none'; this.querySelector('.material-icons').classList.toggle('rotate-180')">
+                    <div class="material-card">
+                        <div class="p-4 cursor-pointer" onclick="window.app.toggleExpansion('container', '${container.id}')">
+                            <div class="flex justify-between items-center">
+                                <div class="flex items-center gap-2">
+                                    <span class="material-icons text-yellow-600">folder</span>
+                                    <h3 class="text-xl font-medium">${container.name}</h3>
+                                </div>
+                                <div class="flex items-center">
+                                    <button onclick="event.stopPropagation(); window.app.openContainerModal('${container.id}')" class="material-button-text p-2 rounded-full"><span class="material-icons text-lg">edit</span></button>
+                                    <button onclick="event.stopPropagation(); window.app.deleteContainer('${container.id}')" class="material-button-text p-2 rounded-full"><span class="material-icons text-lg">delete</span></button>
+                                    <span id="icon-container-${container.id}" class="material-icons transition-transform transform ${isExpanded ? 'rotate-180' : ''}">expand_more</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div id="content-container-${container.id}" style="display: ${isExpanded ? 'block' : 'none'}" class="border-t px-2 py-2 md:px-4 md:py-4 space-y-3 bg-gray-50/50">
+                           ${sheets.length > 0 ? sheets.map(sheet => renderSingleSheet(sheet, expansionState.sheets.includes(sheet.id))).join('') : '<p class="text-sm text-center text-gray-500 py-2">Nessuna scheda in questo contenitore.</p>'}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            // Aggiunge le schede non assegnate
+            const unassignedSheets = sheetsByContainer['unassigned'] || [];
+            if (unassignedSheets.length > 0) {
+                 html += `
+                    <div class="mt-6">
+                        <h4 class="text-gray-500 font-medium mb-2 ml-1">Schede non assegnate</h4>
+                        <div class="space-y-4">
+                           ${unassignedSheets.map(sheet => renderSingleSheet(sheet, expansionState.sheets.includes(sheet.id))).join('')}
+                        </div>
+                    </div>`;
+            }
+            
+            list.innerHTML = html;
+        }
+
+        function renderSingleSheet(sheet, isExpanded) {
+             return `
+                <div class="material-card !shadow-sm hover:!shadow-md">
+                    <div class="p-4 cursor-pointer" onclick="window.app.toggleExpansion('sheet', '${sheet.id}')">
                          <div class="flex justify-between items-center">
                             <div>
-                                <h3 class="text-xl font-medium">${sheet.name}</h3>
+                                <h3 class="text-lg font-medium">${sheet.name}</h3>
                                 <p class="text-sm text-gray-500">${sheet.description}</p>
                             </div>
-                            <span class="material-icons transition-transform transform ${isExpanded ? 'rotate-180' : ''}">expand_more</span>
+                             <span id="icon-sheet-${sheet.id}" class="material-icons transition-transform transform ${isExpanded ? 'rotate-180' : ''}">expand_more</span>
                          </div>
                     </div>
-                    <div id="sheet-content-${sheet.id}" style="display: ${isExpanded ? 'block' : 'none'}" class="border-t">
+                    <div id="content-sheet-${sheet.id}" style="display: ${isExpanded ? 'block' : 'none'}" class="border-t">
                         <div class="p-4 space-y-3">
                             <div class="flex justify-between items-center flex-wrap gap-2">
                                 <p class="text-sm font-medium">Note: <span class="font-normal">${sheet.notes || 'Nessuna nota'}</span></p>
@@ -578,7 +623,7 @@
                         </div>
                     </div>
                 </div>
-            `}).join('');
+            `;
         }
         
         function renderSheetItems(sheetId) {
@@ -602,15 +647,19 @@
             const latestHistory = state.history
                 .filter(h => h.exerciseId === item.exerciseId && h.params)
                 .sort((a,b) => b.timestamp.seconds - a.timestamp.seconds)[0];
+            
+            const labelHtml = item.label && item.label.text ? `
+                <span class="text-xs font-medium px-2 py-1 rounded-full" style="background-color:${item.label.color || '#cccccc'}; color: #fff;">${item.label.text}</span>
+            ` : '';
 
             return `
-                <div class="material-card p-3 flex flex-col gap-3 sheet-item ${item.isDeactivated ? 'deactivated' : ''}">
+                <div class="material-card p-3 flex flex-col gap-3 sheet-item ${item.isDeactivated ? 'deactivated' : ''} ${item.isDone ? 'done' : ''}">
                     <div class="flex items-start justify-between">
-                        <div class="flex items-center gap-2 flex-grow">
+                        <div class="flex items-center gap-3 flex-grow">
                             <input type="checkbox" ${item.isDone ? 'checked' : ''} onchange="window.app.toggleSheetItemDone('${sheetId}', '${item.id}', this.checked)" class="w-5 h-5 mt-1 flex-shrink-0">
-                            <div class="flex items-center gap-2">
-                                <span class="w-4 h-4 rounded-full flex-shrink-0" style="background-color: ${item.color || '#cccccc'}"></span>
+                            <div>
                                 <span class="font-bold text-lg cursor-pointer hover:underline" onclick="window.app.openExerciseModal('${exercise.id}')">${exercise.name}</span>
+                                ${labelHtml ? `<div class="mt-1">${labelHtml}</div>` : ''}
                             </div>
                         </div>
                         <div class="flex items-center flex-shrink-0">
@@ -618,7 +667,6 @@
                            <button onclick="window.app.openSheetItemActions('${sheetId}', '${item.id}')" class="material-button-text p-2 rounded-full"><span class="material-icons text-lg">more_vert</span></button>
                         </div>
                     </div>
-                    <!-- Parametri -->
                     <div class="pl-9 space-y-2">
                         <label class="font-medium text-sm">Ultima performance:</label>
                         <div class="text-sm p-2 bg-gray-100 rounded space-y-1">
@@ -697,13 +745,12 @@
                 const sets = JSON.parse(jsonString);
                 if (!Array.isArray(sets) || sets.length === 0) return 'N/D';
                 return sets.map(set => 
-                    Object.values(set).filter(v => v).join(' x ')
+                    Object.values(set).filter(v => v).join(' - ')
                 ).join(' / ');
             } catch (e) {
                 return 'Dati non validi';
             }
         }
-
 
         function showConfirm(title, message, onConfirm) {
             document.getElementById('confirm-title').innerText = title;
@@ -750,13 +797,47 @@
             return `${String(min).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
         }
         
+        // --- GESTIONE STATO ESPANSIONE ---
+        const EXPANSION_STATE_KEY = 'workoutTrackerExpansionState';
+
+        function getExpansionState() {
+            try {
+                const state = JSON.parse(localStorage.getItem(EXPANSION_STATE_KEY));
+                return state || { containers: [], sheets: [] };
+            } catch (e) {
+                return { containers: [], sheets: [] };
+            }
+        }
+
+        function saveExpansionState(type, id, isExpanded) {
+            const state = getExpansionState();
+            const key = type === 'container' ? 'containers' : 'sheets';
+            
+            const set = new Set(state[key]);
+            if (isExpanded) {
+                set.add(id);
+            } else {
+                set.delete(id);
+            }
+            state[key] = Array.from(set);
+            
+            localStorage.setItem(EXPANSION_STATE_KEY, JSON.stringify(state));
+        }
+        
+        function toggleExpansion(type, id) {
+            const content = document.getElementById(`content-${type}-${id}`);
+            const icon = document.getElementById(`icon-${type}-${id}`);
+            const isExpanded = content.style.display !== 'none';
+
+            content.style.display = isExpanded ? 'none' : 'block';
+            icon?.classList.toggle('rotate-180', !isExpanded);
+            saveExpansionState(type, id, !isExpanded);
+        }
+
+
         // --- GESTIONE MODALS ---
         
         function closeModal() {
-            if (state.chartInstance) {
-                state.chartInstance.destroy();
-                state.chartInstance = null;
-            }
             modalContainer.classList.add('hidden');
             modalContainer.innerHTML = '';
         }
@@ -846,6 +927,15 @@
                     <div class="space-y-4">
                         <input type="text" id="sheet-name" placeholder="Nome Scheda" class="input-field" value="${sheet?.name || ''}">
                         <textarea id="sheet-description" placeholder="Descrizione (opzionale)" class="input-field">${sheet?.description || ''}</textarea>
+                        
+                        <div>
+                            <label for="sheet-container" class="text-sm font-medium text-gray-700">Contenitore (opzionale)</label>
+                            <select id="sheet-container" class="input-field mt-1">
+                                <option value="">Nessun contenitore</option>
+                                ${state.sheetContainers.map(c => `<option value="${c.id}" ${sheet?.containerId === c.id ? 'selected' : ''}>${c.name}</option>`).join('')}
+                            </select>
+                        </div>
+
                         <textarea id="sheet-notes" placeholder="Note (opzionale)" class="input-field min-h-[100px]">${sheet?.notes || ''}</textarea>
                     </div>
                     <div class="flex justify-end gap-2 mt-6">
@@ -855,6 +945,24 @@
                 </div>`;
             modalContainer.classList.remove('hidden');
             document.getElementById('save-sheet-btn').onclick = () => saveSheet(id);
+        }
+        
+        function openContainerModal(id = null) {
+            const container = id ? state.sheetContainers.find(c => c.id === id) : null;
+            const title = container ? 'Modifica Contenitore' : 'Nuovo Contenitore';
+            modalContainer.innerHTML = `
+                <div class="modal-content p-6 overflow-y-auto">
+                    <h3 class="text-xl font-medium mb-6">${title}</h3>
+                    <div class="space-y-4">
+                        <input type="text" id="container-name" placeholder="Nome Contenitore" class="input-field" value="${container?.name || ''}">
+                    </div>
+                    <div class="flex justify-end gap-2 mt-6">
+                        <button onclick="window.app.closeModal()" class="material-button material-button-text">Annulla</button>
+                        <button id="save-container-btn" class="material-button material-button-filled">Salva</button>
+                    </div>
+                </div>`;
+            modalContainer.classList.remove('hidden');
+            document.getElementById('save-container-btn').onclick = () => saveContainer(id);
         }
 
         function openAddHistoryModal(exerciseId = null, historyId = null) {
@@ -900,15 +1008,19 @@
                              ${(exercise.parameters && exercise.parameters.length > 0) ? exercise.parameters.map(paramName => {
                                  let sets = [];
                                  try { sets = JSON.parse(historyItem?.params?.[paramName]?.value || '[]'); } catch(e){}
+                                 if (sets.length === 0) sets.push({}); // Aggiungi una riga vuota se non ci sono dati
                                  return `
                                     <div class="p-2 border rounded" data-param-name="${paramName}">
                                         <label class="font-medium">${paramName}</label>
                                         <div class="space-y-2 mt-1" id="sets-for-${paramName.replace(/\s/g,'-')}">
                                             ${sets.map((set, index) => `
-                                                <div class="flex gap-2 items-center" data-set-index="${index}">
+                                                <div class="flex gap-1.5 items-center" data-set-index="${index}">
                                                     <input type="text" placeholder="" class="input-field !p-2 flex-1" value="${set.val1 || ''}">
                                                     <input type="text" placeholder="" class="input-field !p-2 flex-1" value="${set.val2 || ''}">
                                                     <input type="text" placeholder="" class="input-field !p-2 flex-1" value="${set.val3 || ''}">
+                                                    <input type="text" placeholder="" class="input-field !p-2 flex-1" value="${set.val4 || ''}">
+                                                    <input type="text" placeholder="" class="input-field !p-2 flex-1" value="${set.val5 || ''}">
+                                                    <input type="text" placeholder="" class="input-field !p-2 flex-1" value="${set.val6 || ''}">
                                                     <button onclick="this.parentElement.remove()" class="material-button-text p-2 rounded-full"><span class="material-icons">remove_circle_outline</span></button>
                                                 </div>
                                             `).join('')}
@@ -1068,11 +1180,11 @@
                 </div>
             `;
         }
-
+        
         function renderExerciseProgressTab(exercise) {
             const container = document.getElementById('tab-content-progress');
             const exerciseHistory = state.history.filter(h => h.exerciseId === exercise.id && h.params && Object.keys(h.params).length > 0)
-                                        .sort((a,b) => a.timestamp.seconds - b.timestamp.seconds);
+                                        .sort((a,b) => b.timestamp.seconds - a.timestamp.seconds);
             
             if (exerciseHistory.length === 0) {
                 container.innerHTML = `<p class="text-center text-gray-500">Nessun progresso registrato per questo esercizio.</p>`;
@@ -1080,9 +1192,8 @@
             }
 
             container.innerHTML = `
-                <canvas id="progress-chart"></canvas>
-                <div class="mt-4 border-t pt-4 space-y-2 max-h-60 overflow-y-auto">
-                    ${[...exerciseHistory].reverse().map(h => `
+                <div class="space-y-2 max-h-80 overflow-y-auto">
+                    ${exerciseHistory.map(h => `
                         <div class="text-sm p-2 bg-gray-50 rounded">
                             <p class="font-bold">${new Date(h.timestamp.seconds * 1000).toLocaleString('it-IT')}</p>
                             ${Object.entries(h.params).map(([key, p]) => `<p><strong>${key}:</strong> ${renderCompoundParam(p.value)}</p>`).join('')}
@@ -1090,53 +1201,9 @@
                     `).join('')}
                 </div>
             `;
-
-            if (state.chartInstance) state.chartInstance.destroy();
-            
-            const ctx = document.getElementById('progress-chart').getContext('2d');
-            const datasets = {};
-            
-            exerciseHistory.forEach(h => {
-                const date = new Date(h.timestamp.seconds * 1000);
-                Object.entries(h.params).forEach(([paramName, p]) => {
-                    if (!datasets[paramName]) {
-                        datasets[paramName] = {
-                            label: `${paramName} (Volume)`,
-                            data: [],
-                            borderColor: COLORS[Object.keys(datasets).length % COLORS.length],
-                            fill: false,
-                            tension: 0.1
-                        };
-                    }
-                    try {
-                        const sets = JSON.parse(p.value);
-                        const totalVolume = (sets[0]?.val1 || 0) * (sets[0]?.val2 || 1);
-                        if (!isNaN(totalVolume)) {
-                           datasets[paramName].data.push({ x: date, y: totalVolume });
-                        }
-                    } catch(e) {}
-                });
-            });
-
-            state.chartInstance = new Chart(ctx, {
-                type: 'line',
-                data: { datasets: Object.values(datasets) },
-                 options: {
-                    scales: {
-                        x: { 
-                            type: 'time',
-                            time: { unit: 'day', displayFormats: { day: 'dd/MM/yy' } },
-                            title: { display: true, text: 'Data' } 
-                        },
-                        y: { title: { display: true, text: 'Volume' } }
-                    },
-                    plugins: {
-                        tooltip: { callbacks: { title: (context) => new Date(context[0].parsed.x).toLocaleDateString('it-IT') } }
-                    }
-                }
-            });
         }
-        
+
+
         function renderExerciseDiaryTab(exercise) {
              const container = document.getElementById('tab-content-diary');
              const diaryEntries = state.history.filter(h => h.exerciseId === exercise.id && h.diary)
@@ -1297,11 +1364,11 @@
                 document.querySelectorAll(`#sets-for-${paramId} > div`).forEach(setDiv => {
                     const inputs = setDiv.querySelectorAll('input');
                     const set = {
-                        val1: inputs[0].value || null,
-                        val2: inputs[1].value || null,
-                        val3: inputs[2].value || null,
+                        val1: inputs[0].value || null, val2: inputs[1].value || null,
+                        val3: inputs[2].value || null, val4: inputs[3].value || null,
+                        val5: inputs[4].value || null, val6: inputs[5].value || null,
                     };
-                    if (set.val1 || set.val2 || set.val3) {
+                    if (Object.values(set).some(v => v)) {
                         sets.push(set);
                         hasAnyParamValue = true;
                     }
@@ -1361,10 +1428,11 @@
             const name = document.getElementById('sheet-name').value.trim();
             const description = document.getElementById('sheet-description').value.trim();
             const notes = document.getElementById('sheet-notes').value.trim();
+            const containerId = document.getElementById('sheet-container').value || null;
 
             if (!name) return showToast("Il nome della scheda è obbligatorio.", 'error');
 
-            const data = { name, description, notes, updatedAt: serverTimestamp() };
+            const data = { name, description, notes, containerId, updatedAt: serverTimestamp() };
             const collectionPath = `/users/${userId}/workoutSheets`;
 
             try {
@@ -1401,6 +1469,53 @@
             });
         }
         
+        async function saveContainer(id = null) {
+            const { userId } = state;
+            if (!userId) return showToast("Utente non autenticato.", 'error');
+            const name = document.getElementById('container-name').value.trim();
+            if (!name) return showToast("Il nome del contenitore è obbligatorio.", 'error');
+            
+            const data = { name, updatedAt: serverTimestamp() };
+            const collectionPath = `/users/${userId}/sheetContainers`;
+            try {
+                if (id) {
+                    await setDoc(doc(db, collectionPath, id), data, { merge: true });
+                } else {
+                    data.createdAt = serverTimestamp();
+                    await addDoc(collection(db, collectionPath), data);
+                }
+                closeModal();
+                showToast(`Contenitore "${name}" salvato.`, 'success');
+            } catch (e) {
+                console.error("Errore salvataggio contenitore:", e);
+                showToast("Errore durante il salvataggio.", 'error');
+            }
+        }
+
+        async function deleteContainer(id) {
+            const { userId } = state;
+            if (!userId) return showToast("Utente non autenticato.", 'error');
+            const container = state.sheetContainers.find(c => c.id === id);
+            if (!container) return;
+             showConfirm("Conferma Eliminazione", `Sei sicuro di voler eliminare il contenitore "<strong>${container.name}</strong>"? Le schede al suo interno non verranno eliminate, ma saranno spostate in "non assegnate".`, async () => {
+                 try {
+                    const batch = writeBatch(db);
+                    const sheetsInContainer = state.sheets.filter(s => s.containerId === id);
+                    sheetsInContainer.forEach(sheet => {
+                        const sheetRef = doc(db, `/users/${userId}/workoutSheets`, sheet.id);
+                        batch.update(sheetRef, { containerId: null });
+                    });
+                    const containerRef = doc(db, `/users/${userId}/sheetContainers`, id);
+                    batch.delete(containerRef);
+                    await batch.commit();
+                    showToast("Contenitore eliminato.", 'success');
+                } catch(e) {
+                    console.error("Errore eliminazione contenitore:", e);
+                    showToast("Errore durante l'eliminazione.", 'error');
+                }
+             });
+        }
+
         // --- LOGICA SCHEDE ALLENAMENTO ---
         
         async function saveItemsToSheet(sheetId, itemsToAdd) {
@@ -1511,11 +1626,19 @@
             const editAction = item.type === 'pause' || item.type === 'text' ? `
                 <button id="edit-item-btn" class="material-button material-button-text w-full justify-start">Modifica</button>` : '';
 
-            const colorAction = item.type === 'exercise' ? `
-                <div class="mt-2">
-                    <p class="text-sm font-medium mb-2">Assegna colore:</p>
-                    <div class="flex flex-wrap gap-2">
-                        ${COLORS.map(c => `<div onclick="window.app.updateSheetItemColor('${sheetId}','${itemId}','${c}')" class="color-dot ${item.color === c ? 'selected' : ''}" style="background-color:${c}"></div>`).join('')}
+            const labelAction = item.type === 'exercise' ? `
+                <div class="mt-2 border-t pt-2">
+                    <p class="text-sm font-medium mb-2">Etichetta Colorata</p>
+                    <div class="flex gap-2">
+                         <input type="text" id="label-text" placeholder="Testo etichetta" class="input-field !p-2 flex-grow" value="${item.label?.text || ''}">
+                         <input type="hidden" id="label-color" value="${item.label?.color || COLORS[0]}">
+                    </div>
+                    <div class="flex flex-wrap gap-2 mt-2">
+                        ${COLORS.map(c => `<div onclick="document.getElementById('label-color').value='${c}'; document.querySelectorAll('.color-dot').forEach(d=>d.classList.remove('selected')); this.classList.add('selected');" class="color-dot ${(item.label?.color || COLORS[0]) === c ? 'selected' : ''}" style="background-color:${c}"></div>`).join('')}
+                    </div>
+                     <div class="flex justify-end gap-2 mt-2">
+                        <button id="remove-label-btn" class="material-button material-button-text text-red-600 text-sm">Rimuovi</button>
+                        <button id="save-label-btn" class="material-button material-button-outlined text-sm">Salva Etichetta</button>
                     </div>
                 </div>
             ` : '';
@@ -1527,9 +1650,9 @@
                         ${editAction}
                         <button id="toggle-deactivate-btn" class="material-button material-button-text w-full justify-start">${item.isDeactivated ? 'Riattiva' : 'Disattiva Temporaneamente'}</button>
                         <button id="delete-item-btn" class="material-button material-button-text w-full justify-start text-red-600">Elimina dalla scheda</button>
-                        ${colorAction}
                     </div>
-                     <div class="flex justify-end gap-2 mt-6">
+                    ${labelAction}
+                     <div class="flex justify-end gap-2 mt-6 border-t pt-4">
                         <button onclick="window.app.closeModal()" class="material-button material-button-text">Chiudi</button>
                     </div>
                 </div>
@@ -1540,6 +1663,21 @@
             }
             document.getElementById('toggle-deactivate-btn').onclick = () => toggleSheetItemDeactivated(sheetId, itemId, !item.isDeactivated);
             document.getElementById('delete-item-btn').onclick = () => { closeModal(); deleteSheetItem(sheetId, itemId); };
+            
+            const saveLabelBtn = document.getElementById('save-label-btn');
+            if (saveLabelBtn) {
+                saveLabelBtn.onclick = () => {
+                    const text = document.getElementById('label-text').value.trim();
+                    const color = document.getElementById('label-color').value;
+                    const label = text ? { text, color } : null;
+                    updateSheetItemLabel(sheetId, itemId, label);
+                };
+            }
+             const removeLabelBtn = document.getElementById('remove-label-btn');
+            if (removeLabelBtn) {
+                removeLabelBtn.onclick = () => updateSheetItemLabel(sheetId, itemId, null);
+            }
+
 
             modalContainer.classList.remove('hidden');
         }
@@ -1555,14 +1693,14 @@
             } catch(e) { console.error(e); showToast("Errore aggiornamento.", 'error'); }
         }
 
-        async function updateSheetItemColor(sheetId, itemId, color) {
+        async function updateSheetItemLabel(sheetId, itemId, label) {
             const { userId } = state;
             if (!userId) return;
              try {
                 const docRef = doc(db, `/users/${userId}/workoutSheets/${sheetId}/items`, itemId);
-                await updateDoc(docRef, { color });
+                await updateDoc(docRef, { label: label }); // label può essere un oggetto o null
                 closeModal();
-            } catch(e) { console.error(e); showToast("Errore aggiornamento colore.", 'error'); }
+            } catch(e) { console.error(e); showToast("Errore aggiornamento etichetta.", 'error'); }
         }
         
         function editSheetItem(sheetId, itemId, type) {
@@ -1682,20 +1820,22 @@
                 const container = document.getElementById(`sets-for-${paramId}`);
                 const index = container.children.length;
                 const div = document.createElement('div');
-                div.className = "flex gap-2 items-center";
+                div.className = "flex gap-1.5 items-center";
                 div.dataset.setIndex = index;
                 div.innerHTML = `
-                    <input type="text" placeholder="" class="input-field !p-2 flex-1">
-                    <input type="text" placeholder="" class="input-field !p-2 flex-1">
-                    <input type="text" placeholder="" class="input-field !p-2 flex-1">
+                    <input type="text" placeholder="" class="input-field !p-2 flex-1"><input type="text" placeholder="" class="input-field !p-2 flex-1">
+                    <input type="text" placeholder="" class="input-field !p-2 flex-1"><input type="text" placeholder="" class="input-field !p-2 flex-1">
+                    <input type="text" placeholder="" class="input-field !p-2 flex-1"><input type="text" placeholder="" class="input-field !p-2 flex-1">
                     <button onclick="this.parentElement.remove()" class="material-button-text p-2 rounded-full"><span class="material-icons">remove_circle_outline</span></button>
                 `;
                 container.appendChild(div);
             },
             openSheetModal, deleteSheet, addItemsToSheet, resetSheetDoneStatus,
             toggleSheetItemDone, reorderSheetItem, openSheetItemActions,
-            deleteSheetItem, updateSheetItemColor,
-            toggleTimer, resetTimer
+            deleteSheetItem,
+            toggleTimer, resetTimer,
+            openContainerModal, deleteContainer,
+            toggleExpansion
         };
         
         function startApp() {
@@ -1718,6 +1858,7 @@
             document.getElementById('search-history-date').addEventListener('change', renderHistoryPage);
             document.getElementById('search-sheets').addEventListener('input', renderSheetsPage);
             document.getElementById('add-category-btn').onclick = () => openCategoryModal();
+            document.getElementById('add-container-btn').onclick = () => openContainerModal();
             
             const basePath = `/users/${userId}`;
 
@@ -1725,6 +1866,7 @@
             onSnapshot(query(collection(db, `${basePath}/categories`), orderBy("name")), s => { state.categories = s.docs.map(d=>({id:d.id,...d.data()})); render(); }, e => console.error("categories listener error:", e));
             onSnapshot(query(collection(db, `${basePath}/exercises`)), s => { state.exercises = s.docs.map(d=>({id:d.id,...d.data()})); render(); }, e => console.error("exercises listener error:", e));
             onSnapshot(query(collection(db, `${basePath}/exerciseHistory`), orderBy("timestamp", "desc")), s => { state.history = s.docs.map(d=>({id:d.id,...d.data()})); render(); }, e => console.error("exerciseHistory listener error:", e));
+            onSnapshot(query(collection(db, `${basePath}/sheetContainers`), orderBy("name")), s => { state.sheetContainers = s.docs.map(d=>({id:d.id,...d.data()})); render(); }, e => console.error("sheetContainers listener error:", e));
             onSnapshot(query(collection(db, `${basePath}/workoutSheets`), orderBy("name")), s => {
                 const newSheets = s.docs.map(d=>({id:d.id,...d.data()}));
                 const newSheetIds = newSheets.map(sh => sh.id);
@@ -1759,4 +1901,3 @@
     </script>
 </body>
 </html>
-
