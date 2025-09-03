@@ -253,16 +253,20 @@
     <script type="module">
         // Importa le funzioni di Firebase
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+        import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
         import { getFirestore, collection, addDoc, getDocs, doc, setDoc, deleteDoc, onSnapshot, query, where, orderBy, serverTimestamp, writeBatch, Timestamp, updateDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
-        // Configurazione di Firebase (utilizzando variabili globali fornite dall'ambiente)
-        const firebaseConfig = typeof __firebase_config !== 'undefined'
-            ? JSON.parse(__firebase_config)
-            : { apiKey: "INVALID_KEY", authDomain: "...", projectId: "...", appId: "..." }; // Fallback per ambienti locali
-
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-
+        // Configurazione di Firebase
+        const firebaseConfig = {
+            apiKey: "AIzaSyCZreK6wed9Y4HzddzXiFXsL8Cyl1921RQ",
+            authDomain: "mariannagym-9672e.firebaseapp.com",
+            databaseURL: "https://mariannagym-9672e-default-rtdb.europe-west1.firebasedatabase.app",
+            projectId: "mariannagym-9672e",
+            storageBucket: "mariannagym-9672e.firebasestorage.app",
+            messagingSenderId: "372540019319",
+            appId: "1:372540019319:web:11904beb36482321116c72"
+        };
+        
         // Inizializza Firebase
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
@@ -928,7 +932,31 @@
         }
 
         function addItemsToSheet(sheetId) {
-             modalContainer.innerHTML = `
+            let selectionOrder = []; // Esercizi selezionati in ordine
+
+            function renderExerciseSelection() {
+                const listContainer = document.getElementById('exercise-selection-list');
+                if (!listContainer) return;
+                
+                listContainer.innerHTML = state.categories.map(cat => `
+                    <div>
+                        <h4 class="font-bold text-gray-600">${cat.name}</h4>
+                        ${state.exercises.filter(ex => ex.categoryId === cat.id).map(ex => {
+                            const selectionIndex = selectionOrder.indexOf(ex.id);
+                            const isSelected = selectionIndex !== -1;
+                            return `
+                                <div data-exercise-id="${ex.id}" class="flex items-center gap-3 p-2 rounded hover:bg-gray-100 cursor-pointer">
+                                    <div class="w-6 h-6 flex items-center justify-center rounded-full text-sm font-bold border-2 ${isSelected ? 'bg-purple-600 border-purple-600 text-white' : 'border-gray-300'}">
+                                        ${isSelected ? (selectionIndex + 1) : ''}
+                                    </div>
+                                    <span>${ex.name}</span>
+                                </div>`;
+                        }).join('')}
+                    </div>
+                `).join('');
+            }
+            
+            modalContainer.innerHTML = `
                 <div class="modal-content p-6 overflow-y-auto">
                     <h3 class="text-xl font-medium mb-4">Aggiungi Elementi alla Scheda</h3>
                     <div class="flex gap-2 mb-4">
@@ -945,25 +973,29 @@
 
             const renderContent = (type) => {
                 const contentDiv = document.getElementById('add-items-content');
-                 document.querySelectorAll('.modal-content .tab-button').forEach(b => b.classList.remove('active'));
-                 document.getElementById(`add-item-type-${type}`).classList.add('active');
+                document.querySelectorAll('.modal-content .tab-button').forEach(b => b.classList.remove('active'));
+                document.getElementById(`add-item-type-${type}`).classList.add('active');
                 
                 switch(type) {
                     case 'exercise':
-                        contentDiv.innerHTML = `
-                        <div class="max-h-60 overflow-y-auto space-y-2 border p-2 rounded">
-                        ${state.categories.map(cat => `
-                            <div>
-                                <h4 class="font-bold text-gray-600">${cat.name}</h4>
-                                ${state.exercises.filter(ex => ex.categoryId === cat.id).map(ex => `
-                                    <label class="flex items-center gap-2 p-1 rounded hover:bg-gray-100">
-                                        <input type="checkbox" value="${ex.id}" class="w-4 h-4">
-                                        <span>${ex.name}</span>
-                                    </label>
-                                `).join('')}
-                            </div>
-                        `).join('')}
-                        </div>`;
+                        contentDiv.innerHTML = `<div id="exercise-selection-list" class="max-h-60 overflow-y-auto space-y-2 border p-2 rounded"></div>`;
+                        renderExerciseSelection();
+                        const listContainer = document.getElementById('exercise-selection-list');
+                        if (listContainer) {
+                            listContainer.addEventListener('click', (event) => {
+                                const exerciseRow = event.target.closest('[data-exercise-id]');
+                                if (!exerciseRow) return;
+
+                                const exerciseId = exerciseRow.dataset.exerciseId;
+                                const index = selectionOrder.indexOf(exerciseId);
+                                if (index > -1) {
+                                    selectionOrder.splice(index, 1);
+                                } else {
+                                    selectionOrder.push(exerciseId);
+                                }
+                                renderExerciseSelection();
+                            });
+                        }
                         break;
                     case 'pause':
                         contentDiv.innerHTML = `
@@ -982,7 +1014,24 @@
             document.getElementById('add-item-type-pause').onclick = () => renderContent('pause');
             document.getElementById('add-item-type-text').onclick = () => renderContent('text');
             
-            document.getElementById('save-items-btn').onclick = () => saveItemsToSheet(sheetId);
+            document.getElementById('save-items-btn').onclick = () => {
+                const activeTab = document.querySelector('.modal-content .tab-button.active')?.id;
+                let itemsToAdd = [];
+                if (activeTab === 'add-item-type-exercise') {
+                    selectionOrder.forEach(exerciseId => {
+                        itemsToAdd.push({ type: 'exercise', exerciseId });
+                    });
+                } else if (activeTab === 'add-item-type-pause') {
+                     const minutes = parseInt(document.getElementById('pause-minutes').value) || 0;
+                     const seconds = parseInt(document.getElementById('pause-seconds').value) || 0;
+                     const totalSeconds = minutes * 60 + seconds;
+                     if (totalSeconds > 0) itemsToAdd.push({ type: 'pause', duration: totalSeconds });
+                } else if (activeTab === 'add-item-type-text') {
+                    const text = document.getElementById('text-content').value.trim();
+                    if (text) itemsToAdd.push({ type: 'text', text: text });
+                }
+                saveItemsToSheet(sheetId, itemsToAdd);
+            };
             
             renderContent('exercise');
             modalContainer.classList.remove('hidden');
@@ -1126,7 +1175,7 @@
 
             try {
                 const data = { name, description, updatedAt: serverTimestamp() };
-                const collectionPath = `/artifacts/${appId}/users/${userId}/categories`;
+                const collectionPath = `/users/${userId}/categories`;
                 if (id) {
                     await setDoc(doc(db, collectionPath, id), data, { merge: true });
                 } else {
@@ -1155,10 +1204,10 @@
                 try {
                     const batch = writeBatch(db);
                     exercisesInCategory.forEach(ex => {
-                        const exRef = doc(db, `/artifacts/${appId}/users/${userId}/exercises`, ex.id);
+                        const exRef = doc(db, `/users/${userId}/exercises`, ex.id);
                         batch.update(exRef, { categoryId: '' });
                     });
-                    const catRef = doc(db, `/artifacts/${appId}/users/${userId}/categories`, id);
+                    const catRef = doc(db, `/users/${userId}/categories`, id);
                     batch.delete(catRef);
                     await batch.commit();
                     showToast(`Categoria "${category.name}" eliminata.`, 'success');
@@ -1183,7 +1232,7 @@
                 .filter(Boolean);
 
             const data = { name, zone, categoryId, parameters, updatedAt: serverTimestamp() };
-            const collectionPath = `/artifacts/${appId}/users/${userId}/exercises`;
+            const collectionPath = `/users/${userId}/exercises`;
 
             try {
                 if (id) {
@@ -1206,7 +1255,7 @@
             showConfirm("Conferma Eliminazione", "Sei sicuro di voler eliminare questo esercizio? Verranno eliminati anche tutti i dati storici e le occorrenze nelle schede. L'azione è irreversibile.", async () => {
                 try {
                     const batch = writeBatch(db);
-                    const basePath = `/artifacts/${appId}/users/${userId}`;
+                    const basePath = `/users/${userId}`;
                     
                     batch.delete(doc(db, `${basePath}/exercises`, id));
                     
@@ -1275,7 +1324,7 @@
             }
             
             const data = { exerciseId, timestamp, params, diary };
-            const collectionPath = `/artifacts/${appId}/users/${userId}/exerciseHistory`;
+            const collectionPath = `/users/${userId}/exerciseHistory`;
 
             try {
                 if (historyId) {
@@ -1283,7 +1332,7 @@
                 } else {
                     await addDoc(collection(db, collectionPath), data);
                 }
-                await setDoc(doc(db, `/artifacts/${appId}/users/${userId}/exercises`, exerciseId), { updatedAt: serverTimestamp() }, { merge: true });
+                await setDoc(doc(db, `/users/${userId}/exercises`, exerciseId), { updatedAt: serverTimestamp() }, { merge: true });
                 closeModal();
                 showToast("Documentazione salvata.", 'success');
             } catch(e) {
@@ -1297,7 +1346,7 @@
             if (!userId) return showToast("Utente non autenticato.", 'error');
             showConfirm("Conferma Eliminazione", "Sei sicuro di voler eliminare questa voce dallo storico?", async () => {
                 try {
-                    await deleteDoc(doc(db, `/artifacts/${appId}/users/${userId}/exerciseHistory`, id));
+                    await deleteDoc(doc(db, `/users/${userId}/exerciseHistory`, id));
                     showToast("Voce eliminata dallo storico.", 'success');
                 } catch(e) {
                     console.error("Errore eliminazione storico:", e);
@@ -1316,7 +1365,7 @@
             if (!name) return showToast("Il nome della scheda è obbligatorio.", 'error');
 
             const data = { name, description, notes, updatedAt: serverTimestamp() };
-            const collectionPath = `/artifacts/${appId}/users/${userId}/workoutSheets`;
+            const collectionPath = `/users/${userId}/workoutSheets`;
 
             try {
                 if (id) {
@@ -1338,11 +1387,11 @@
             if (!userId) return showToast("Utente non autenticato.", 'error');
              showConfirm("Conferma Eliminazione", "Sei sicuro di voler eliminare questa scheda e tutti gli elementi al suo interno? (Azione non reversibile)", async () => {
                 try {
-                    const collectionPath = `/artifacts/${appId}/users/${userId}/workoutSheets/${id}/items`;
+                    const collectionPath = `/users/${userId}/workoutSheets/${id}/items`;
                     const itemsSnapshot = await getDocs(collection(db, collectionPath));
                     const batch = writeBatch(db);
                     itemsSnapshot.forEach(d => batch.delete(d.ref));
-                    batch.delete(doc(db, `/artifacts/${appId}/users/${userId}/workoutSheets`, id));
+                    batch.delete(doc(db, `/users/${userId}/workoutSheets`, id));
                     await batch.commit();
                     showToast("Scheda eliminata.", 'success');
                 } catch(e) {
@@ -1354,32 +1403,16 @@
         
         // --- LOGICA SCHEDE ALLENAMENTO ---
         
-        async function saveItemsToSheet(sheetId) {
+        async function saveItemsToSheet(sheetId, itemsToAdd) {
             const { userId } = state;
             if (!userId) return showToast("Utente non autenticato.", 'error');
-            const itemsToAdd = [];
-            const activeTab = document.querySelector('.modal-content .tab-button.active')?.id;
-
-            if (activeTab === 'add-item-type-exercise') {
-                document.querySelectorAll('#add-items-content input[type="checkbox"]:checked').forEach(cb => {
-                    itemsToAdd.push({ type: 'exercise', exerciseId: cb.value });
-                });
-            } else if (activeTab === 'add-item-type-pause') {
-                const minutes = parseInt(document.getElementById('pause-minutes').value) || 0;
-                const seconds = parseInt(document.getElementById('pause-seconds').value) || 0;
-                const totalSeconds = minutes * 60 + seconds;
-                if (totalSeconds > 0) itemsToAdd.push({ type: 'pause', duration: totalSeconds });
-            } else if (activeTab === 'add-item-type-text') {
-                const text = document.getElementById('text-content').value.trim();
-                if (text) itemsToAdd.push({ type: 'text', text: text });
-            }
 
             if (itemsToAdd.length === 0) return showToast("Nessun elemento valido da aggiungere.", 'error');
             
             try {
                 const currentItems = state.sheetItems[sheetId] || [];
                 let maxOrder = currentItems.reduce((max, item) => Math.max(max, item.order), -1);
-                const collectionPath = `/artifacts/${appId}/users/${userId}/workoutSheets/${sheetId}/items`;
+                const collectionPath = `/users/${userId}/workoutSheets/${sheetId}/items`;
 
                 const batch = writeBatch(db);
                 itemsToAdd.forEach(itemData => {
@@ -1410,7 +1443,7 @@
             showConfirm("Resetta Stato", "Sei sicuro di voler segnare tutti gli esercizi di questa scheda come 'da fare'?", async () => {
                 const items = state.sheetItems[sheetId] || [];
                 const batch = writeBatch(db);
-                const collectionPath = `/artifacts/${appId}/users/${userId}/workoutSheets/${sheetId}/items`;
+                const collectionPath = `/users/${userId}/workoutSheets/${sheetId}/items`;
                 items.forEach(item => {
                     if (item.type === 'exercise') {
                         const itemRef = doc(db, collectionPath, item.id);
@@ -1428,7 +1461,7 @@
             const { userId } = state;
             if (!userId) return;
             try {
-                const docRef = doc(db, `/artifacts/${appId}/users/${userId}/workoutSheets/${sheetId}/items`, itemId);
+                const docRef = doc(db, `/users/${userId}/workoutSheets/${sheetId}/items`, itemId);
                 await updateDoc(docRef, { isDone });
             } catch(e) { console.error(e); showToast("Errore aggiornamento stato.", 'error'); }
         }
@@ -1447,7 +1480,7 @@
             const targetItem = items[targetIndex];
             
             const batch = writeBatch(db);
-            const collectionPath = `/artifacts/${appId}/users/${userId}/workoutSheets/${sheetId}/items`;
+            const collectionPath = `/users/${userId}/workoutSheets/${sheetId}/items`;
             const currentRef = doc(db, collectionPath, currentItem.id);
             const targetRef = doc(db, collectionPath, targetItem.id);
 
@@ -1464,7 +1497,7 @@
             if (!userId) return;
              showConfirm("Elimina Elemento", "Sei sicuro di voler eliminare questo elemento dalla scheda?", async () => {
                  try {
-                    const docRef = doc(db, `/artifacts/${appId}/users/${userId}/workoutSheets/${sheetId}/items`, itemId);
+                    const docRef = doc(db, `/users/${userId}/workoutSheets/${sheetId}/items`, itemId);
                      await deleteDoc(docRef);
                      showToast("Elemento rimosso.", 'success');
                  } catch(e) { console.error(e); showToast("Errore eliminazione.", 'error'); }
@@ -1515,7 +1548,7 @@
             const { userId } = state;
             if (!userId) return;
             try {
-                const docRef = doc(db, `/artifacts/${appId}/users/${userId}/workoutSheets/${sheetId}/items`, itemId);
+                const docRef = doc(db, `/users/${userId}/workoutSheets/${sheetId}/items`, itemId);
                 await updateDoc(docRef, { isDeactivated });
                 closeModal();
                 showToast(`Elemento ${isDeactivated ? 'disattivato' : 'riattivato'}.`, 'success');
@@ -1526,7 +1559,7 @@
             const { userId } = state;
             if (!userId) return;
              try {
-                const docRef = doc(db, `/artifacts/${appId}/users/${userId}/workoutSheets/${sheetId}/items`, itemId);
+                const docRef = doc(db, `/users/${userId}/workoutSheets/${sheetId}/items`, itemId);
                 await updateDoc(docRef, { color });
                 closeModal();
             } catch(e) { console.error(e); showToast("Errore aggiornamento colore.", 'error'); }
@@ -1573,7 +1606,7 @@
                     data.text = document.getElementById('text-content').value.trim();
                 }
                 try {
-                    const docRef = doc(db, `/artifacts/${appId}/users/${userId}/workoutSheets/${sheetId}/items`, itemId);
+                    const docRef = doc(db, `/users/${userId}/workoutSheets/${sheetId}/items`, itemId);
                     await updateDoc(docRef, data);
                     closeModal();
                     showToast("Elemento aggiornato.", 'success');
@@ -1686,7 +1719,7 @@
             document.getElementById('search-sheets').addEventListener('input', renderSheetsPage);
             document.getElementById('add-category-btn').onclick = () => openCategoryModal();
             
-            const basePath = `/artifacts/${appId}/users/${userId}`;
+            const basePath = `/users/${userId}`;
 
             // Listeners di Firebase
             onSnapshot(query(collection(db, `${basePath}/categories`), orderBy("name")), s => { state.categories = s.docs.map(d=>({id:d.id,...d.data()})); render(); }, e => console.error("categories listener error:", e));
@@ -1713,11 +1746,7 @@
         // Esegui l'autenticazione e poi avvia l'app
         (async () => {
             try {
-                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                    await signInWithCustomToken(auth, __initial_auth_token);
-                } else {
-                    await signInAnonymously(auth);
-                }
+                await signInAnonymously(auth);
                 state.userId = auth.currentUser.uid;
                 console.log("Authentication successful. UserID:", state.userId);
                 startApp(); // Avvia l'app solo dopo l'autenticazione
