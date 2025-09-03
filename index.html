@@ -150,30 +150,38 @@
     <div id="auth-container" class="fixed inset-0 z-[100] flex items-center justify-center bg-gray-100">
         <div class="material-card p-8 w-full max-w-sm">
             <h2 class="text-2xl font-bold text-center mb-1">Workout<span class="text-[#6750A4]">Tracker</span></h2>
-            <p class="text-center text-gray-500 mb-6">Accedi o registrati per continuare</p>
+            <p class="text-center text-gray-500 mb-6">Accedi per continuare</p>
             <div class="space-y-4">
                 <input type="email" id="auth-email" placeholder="Email" class="input-field">
-                <input type="password" id="auth-password" placeholder="Password" class="input-field">
+                <div class="relative">
+                    <input type="password" id="auth-password" placeholder="Password" class="input-field !pr-12">
+                    <button id="password-toggle" class="absolute inset-y-0 right-0 flex items-center px-3 text-gray-600">
+                        <span class="material-icons text-xl">visibility_off</span>
+                    </button>
+                </div>
             </div>
-            <div class="flex gap-2 mt-6">
-                <button id="login-btn" class="material-button material-button-outlined w-full">Accedi</button>
-                <button id="register-btn" class="material-button material-button-filled w-full">Registrati</button>
+            <div class="flex flex-col items-center mt-6">
+                <button id="login-btn" class="material-button material-button-filled w-full">Accedi</button>
+                <button id="register-btn" class="material-button material-button-text mt-4 text-sm">Non hai un account? Registrati</button>
             </div>
             <p id="auth-error" class="text-red-500 text-sm text-center mt-4 h-4"></p>
         </div>
     </div>
+
 
     <div id="app-container" class="hidden">
         <header class="bg-white/80 backdrop-blur-md sticky top-0 z-40 shadow-sm">
             <div class="container mx-auto px-4">
                 <div class="flex justify-between items-center py-4">
                     <h1 class="text-xl font-bold text-[#1d192b]">Workout<span class="text-[#6750A4]">Tracker</span></h1>
-                    <nav class="hidden md:flex space-x-4 items-center">
-                        <button id="nav-sheets" class="nav-item py-2 px-3 text-gray-600 font-medium">Scheda Allenamento</button>
-                        <button id="nav-history" class="nav-item py-2 px-3 text-gray-600 font-medium">Storico e Progressi</button>
-                        <button id="nav-db" class="nav-item py-2 px-3 text-gray-600 font-medium">Database Esercizi</button>
+                    <div class="flex items-center">
+                        <nav class="hidden md:flex space-x-4 items-center">
+                            <button id="nav-sheets" class="nav-item py-2 px-3 text-gray-600 font-medium">Scheda Allenamento</button>
+                            <button id="nav-history" class="nav-item py-2 px-3 text-gray-600 font-medium">Storico e Progressi</button>
+                            <button id="nav-db" class="nav-item py-2 px-3 text-gray-600 font-medium">Database Esercizi</button>
+                        </nav>
                         <button id="logout-btn" title="Logout" class="material-button-text p-2 rounded-full ml-4"><span class="material-icons">logout</span></button>
-                    </nav>
+                    </div>
                 </div>
             </div>
         </header>
@@ -191,10 +199,6 @@
                 <button id="nav-mobile-db" class="flex flex-col items-center justify-center p-2 text-gray-500 nav-item w-full">
                     <span class="material-icons">fitness_center</span>
                     <span class="text-xs">Esercizi</span>
-                </button>
-                 <button id="logout-btn-mobile" class="flex flex-col items-center justify-center p-2 text-gray-500 nav-item w-full">
-                    <span class="material-icons">logout</span>
-                    <span class="text-xs">Logout</span>
                 </button>
             </div>
         </nav>
@@ -259,7 +263,7 @@
                 <p id="confirm-message" class="mb-6 text-gray-600">Sei sicuro di voler procedere?</p>
                 <div class="flex justify-end gap-2">
                     <button id="confirm-cancel" class="material-button material-button-text">Annulla</button>
-                    <button id="confirm-ok" class="material-button material-button-filled bg-red-600 hover:bg-red-700">Conferma</button>
+                    <button id="confirm-ok" class="material-button material-button-filled">Conferma</button>
                 </div>
             </div>
         </div>
@@ -781,7 +785,7 @@
                 const sets = JSON.parse(jsonString);
                 if (!Array.isArray(sets) || sets.length === 0) return 'N/D';
                 return sets.map(set => 
-                    Object.values(set).filter(v => v).join(' - ')
+                    Object.values(set).filter(v => v !== null && v !== '').join(' - ')
                 ).join(' / ');
             } catch (e) {
                 return 'Dati non validi';
@@ -792,10 +796,19 @@
             document.getElementById('confirm-title').innerText = title;
             document.getElementById('confirm-message').innerHTML = message;
             const confirmModal = document.getElementById('confirm-modal');
-            confirmModal.classList.remove('hidden');
-
             const okButton = document.getElementById('confirm-ok');
             const cancelButton = document.getElementById('confirm-cancel');
+            
+            // Applica la classe corretta al bottone OK in base al titolo (es. per Logout)
+            okButton.className = 'material-button material-button-filled';
+            if (title.toLowerCase().includes('logout') || title.toLowerCase().includes('eliminazione')) {
+                 okButton.classList.add('bg-red-600', 'hover:bg-red-700');
+            } else {
+                 okButton.classList.remove('bg-red-600', 'hover:bg-red-700');
+            }
+
+
+            confirmModal.classList.remove('hidden');
 
             const close = () => confirmModal.classList.add('hidden');
             
@@ -1043,24 +1056,30 @@
                         <div id="params-container" class="space-y-4">
                              ${(exercise.parameters && exercise.parameters.length > 0) ? exercise.parameters.map(paramName => {
                                  let sets = [];
-                                 try { sets = JSON.parse(historyItem?.params?.[paramName]?.value || '[]'); } catch(e){}
-                                 if (sets.length === 0) sets.push({}); // Aggiungi una riga vuota se non ci sono dati
+                                 try { sets = JSON.parse(historyItem?.params?.[paramName]?.value || '[{}]'); } catch(e){ sets = [{}]; }
+                                 if (sets.length === 0) sets.push({});
                                  const paramId = sanitizeForId(paramName);
                                  return `
                                     <div class="p-2 border rounded" data-param-name="${paramName}">
                                         <label class="font-medium">${paramName}</label>
                                         <div class="space-y-2 mt-1" id="sets-for-${paramId}">
-                                            ${sets.map((set, index) => `
-                                                <div class="flex gap-1.5 items-center" data-set-index="${index}">
-                                                    <input type="text" placeholder="" class="input-field !p-2 flex-1" value="${set.val1 || ''}">
-                                                    <input type="text" placeholder="" class="input-field !p-2 flex-1" value="${set.val2 || ''}">
-                                                    <input type="text" placeholder="" class="input-field !p-2 flex-1" value="${set.val3 || ''}">
-                                                    <input type="text" placeholder="" class="input-field !p-2 flex-1" value="${set.val4 || ''}">
-                                                    <input type="text" placeholder="" class="input-field !p-2 flex-1" value="${set.val5 || ''}">
-                                                    <input type="text" placeholder="" class="input-field !p-2 flex-1" value="${set.val6 || ''}">
-                                                    <button onclick="this.parentElement.remove()" class="material-button-text p-2 rounded-full"><span class="material-icons">remove_circle_outline</span></button>
-                                                </div>
-                                            `).join('')}
+                                            ${sets.map((set, index) => {
+                                                const fields = Object.values(set).filter(v => v !== null && v !== '');
+                                                let setHtml = `<div class="flex gap-1.5 items-center" data-set-index="${index}">`;
+
+                                                if (fields.length === 0) {
+                                                    setHtml += `<input type="text" placeholder="" class="input-field !p-2 flex-1" value="">`;
+                                                } else {
+                                                    setHtml += Object.entries(set)
+                                                        .filter(([k, v]) => v !== null)
+                                                        .map(([key, value]) => `<input type="text" placeholder="" class="input-field !p-2 flex-1" value="${value || ''}">`).join('');
+                                                }
+
+                                                setHtml += `<button onclick="window.app.addInputFieldToSet(this)" class="material-button-text p-2 rounded-full !min-w-0"><span class="material-icons">add</span></button>
+                                                            <button onclick="this.parentElement.remove()" class="material-button-text p-2 rounded-full !min-w-0"><span class="material-icons">remove_circle_outline</span></button>
+                                                          </div>`;
+                                                return setHtml;
+                                            }).join('')}
                                         </div>
                                         <button onclick="window.app.addParamSet('${paramId}')" class="material-button-outlined text-xs px-3 py-1 mt-2">Aggiungi Riga</button>
                                     </div>`;
@@ -1399,13 +1418,20 @@
                 const sets = [];
                 const paramId = sanitizeForId(paramName);
                 document.querySelectorAll(`#sets-for-${paramId} > div`).forEach(setDiv => {
+                    const set = {};
                     const inputs = setDiv.querySelectorAll('input');
-                    const set = {
-                        val1: inputs[0].value || null, val2: inputs[1].value || null,
-                        val3: inputs[2].value || null, val4: inputs[3].value || null,
-                        val5: inputs[4].value || null, val6: inputs[5].value || null,
-                    };
-                    if (Object.values(set).some(v => v)) {
+                    let hasValueInSet = false;
+                    inputs.forEach((input, index) => {
+                        const val = input.value.trim();
+                        if (val !== '') {
+                            set[`val${index + 1}`] = val;
+                            hasValueInSet = true;
+                        } else {
+                            set[`val${index + 1}`] = null;
+                        }
+                    });
+                    
+                    if (hasValueInSet) {
                         sets.push(set);
                         hasAnyParamValue = true;
                     }
@@ -1853,19 +1879,26 @@
                 `;
                 container.appendChild(div);
             },
-            addParamSet(paramId) {
+            addParamSet(paramId) { // Aggiunge una nuova riga (set)
                 const container = document.getElementById(`sets-for-${paramId}`);
                 const index = container.children.length;
                 const div = document.createElement('div');
                 div.className = "flex gap-1.5 items-center";
                 div.dataset.setIndex = index;
                 div.innerHTML = `
-                    <input type="text" placeholder="" class="input-field !p-2 flex-1"><input type="text" placeholder="" class="input-field !p-2 flex-1">
-                    <input type="text" placeholder="" class="input-field !p-2 flex-1"><input type="text" placeholder="" class="input-field !p-2 flex-1">
-                    <input type="text" placeholder="" class="input-field !p-2 flex-1"><input type="text" placeholder="" class="input-field !p-2 flex-1">
-                    <button onclick="this.parentElement.remove()" class="material-button-text p-2 rounded-full"><span class="material-icons">remove_circle_outline</span></button>
+                    <input type="text" placeholder="" class="input-field !p-2 flex-1" value="">
+                    <button onclick="window.app.addInputFieldToSet(this)" class="material-button-text p-2 rounded-full !min-w-0"><span class="material-icons">add</span></button>
+                    <button onclick="this.parentElement.remove()" class="material-button-text p-2 rounded-full !min-w-0"><span class="material-icons">remove_circle_outline</span></button>
                 `;
                 container.appendChild(div);
+            },
+            addInputFieldToSet(buttonElement) { // Aggiunge un campo alla riga esistente
+                const newInput = document.createElement('input');
+                newInput.type = 'text';
+                newInput.placeholder = '';
+                newInput.className = 'input-field !p-2 flex-1';
+                // Inserisce il nuovo input prima del pulsante "+"
+                buttonElement.parentElement.insertBefore(newInput, buttonElement);
             },
             openSheetModal, deleteSheet, addItemsToSheet, resetSheetDoneStatus,
             toggleSheetItemDone, reorderSheetItem, openSheetItemActions,
@@ -1929,11 +1962,20 @@
         const loginBtn = document.getElementById('login-btn');
         const registerBtn = document.getElementById('register-btn');
         const authError = document.getElementById('auth-error');
+        const passwordInput = document.getElementById('auth-password');
+        const passwordToggle = document.getElementById('password-toggle');
+
+        // Toggle visibilità password
+        passwordToggle.onclick = () => {
+            const isPassword = passwordInput.type === 'password';
+            passwordInput.type = isPassword ? 'text' : 'password';
+            passwordToggle.querySelector('span').textContent = isPassword ? 'visibility' : 'visibility_off';
+        };
 
         // Funzione per il login
         loginBtn.onclick = async () => {
             const email = document.getElementById('auth-email').value;
-            const password = document.getElementById('auth-password').value;
+            const password = passwordInput.value;
             authError.textContent = '';
             if (!email || !password) {
                 authError.textContent = "Inserisci email e password.";
@@ -1951,7 +1993,7 @@
         // Funzione per la registrazione
         registerBtn.onclick = async () => {
             const email = document.getElementById('auth-email').value;
-            const password = document.getElementById('auth-password').value;
+            const password = passwordInput.value;
              authError.textContent = '';
             if (!email || !password) {
                 authError.textContent = "Inserisci email e password.";
@@ -1972,18 +2014,20 @@
             }
         };
 
-        const handleLogout = async () => {
-            try {
-                await signOut(auth);
-                // Ricarica la pagina per un reset pulito dello stato
-                window.location.reload();
-            } catch (error) {
-                console.error("Logout failed:", error);
-            }
+        const handleLogout = () => {
+            showConfirm('Conferma Logout', 'Sei sicuro di voler uscire?', async () => {
+                try {
+                    await signOut(auth);
+                    // Ricarica la pagina per un reset pulito dello stato
+                    window.location.reload();
+                } catch (error) {
+                    console.error("Logout failed:", error);
+                    showToast("Errore durante il logout.", 'error');
+                }
+            });
         };
 
         document.getElementById('logout-btn').onclick = handleLogout;
-        document.getElementById('logout-btn-mobile').onclick = handleLogout;
 
 
         // Controlla lo stato dell'utente all'avvio
