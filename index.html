@@ -14,6 +14,9 @@
             background-color: #f3f3f3; /* Surface Container Low */
             color: #1c1b1f; /* On Surface */
         }
+        body.overflow-hidden {
+            overflow: hidden;
+        }
         .material-card {
             background-color: #fffbfe; /* Surface */
             border-radius: 12px;
@@ -97,6 +100,7 @@
         }
         .color-dot.selected {
             border-color: #6750A4;
+            box-shadow: 0 0 0 2px #fff, 0 0 0 4px #6750A4;
         }
         .tab-button {
             padding: 8px 16px;
@@ -318,6 +322,11 @@
         const COLORS = [
             '#ef4444', '#f97316', '#f59e0b', '#84cc16', '#22c55e', 
             '#10b981', '#06b6d4', '#3b82f6', '#8b5cf6', '#d946ef'
+        ];
+        // MODIFICA: Aggiunta palette colori per i contenitori
+        const CONTAINER_COLORS = [
+            '#EFF6FF', '#F0FDF4', '#FEFCE8', '#FFF7ED', 
+            '#FEF2F2', '#F5F3FF', '#FDF2F8', '#F3F4F6'
         ];
 
         // Elementi DOM
@@ -564,8 +573,7 @@
                 </div>
             `).join('');
         }
-
-        // --- MODIFICA INIZIO ---
+        
         // Rendering Schede
         function renderSheetsPage() {
             const list = document.getElementById('sheets-list');
@@ -609,13 +617,14 @@
                 if (searchTerm !== '' && sheets.length === 0) return ''; // Nasconde contenitori vuoti durante la ricerca
 
                 const isExpanded = expansionState.containers.includes(container.id);
+                // MODIFICA: Utilizzo del colore del contenitore e icona neutra
                 return `
-                    <div class="material-card bg-blue-50">
+                    <div class="material-card" style="background-color: ${container.color || '#EFF6FF'}">
                         <div class="p-4 cursor-pointer" onclick="window.app.toggleExpansion('container', '${container.id}')">
                             <div class="flex justify-between items-center">
                                 <div>
                                     <div class="flex items-center gap-2">
-                                        <span class="material-icons text-blue-600">folder</span>
+                                        <span class="material-icons text-gray-700">folder</span>
                                         <h3 class="text-xl font-medium">${container.name}</h3>
                                     </div>
                                     ${container.description ? `<p class="text-sm text-gray-600 mt-1 ml-8">${container.description}</p>` : ''}
@@ -688,7 +697,6 @@
                 </div>
             `;
         }
-        // --- MODIFICA FINE ---
         
         function renderSheetItems(sheetId) {
             const items = (state.sheetItems[sheetId] || []).sort((a,b) => a.order - b.order);
@@ -831,8 +839,14 @@
             }
 
             confirmModal.classList.remove('hidden');
+            // MODIFICA: Blocco scroll pagina
+            document.body.classList.add('overflow-hidden');
 
-            const close = () => confirmModal.classList.add('hidden');
+            const close = () => {
+                confirmModal.classList.add('hidden');
+                 // MODIFICA: Sblocco scroll pagina
+                document.body.classList.remove('overflow-hidden');
+            }
             
             const newOkButton = okButton.cloneNode(true);
             okButton.parentNode.replaceChild(newOkButton, okButton);
@@ -921,6 +935,8 @@
         function closeModal() {
             modalContainer.classList.add('hidden');
             modalContainer.innerHTML = '';
+            // MODIFICA: Sblocco scroll pagina
+            document.body.classList.remove('overflow-hidden');
         }
 
         function openCategoryModal(id = null) {
@@ -939,6 +955,7 @@
                     </div>
                 </div>`;
             modalContainer.classList.remove('hidden');
+            document.body.classList.add('overflow-hidden');
             document.getElementById('save-category-btn').onclick = () => saveCategory(id);
         }
         
@@ -1001,6 +1018,7 @@
             }
 
             modalContainer.classList.remove('hidden');
+            document.body.classList.add('overflow-hidden');
             document.getElementById('save-exercise-btn').onclick = () => saveExercise(id);
         }
 
@@ -1030,9 +1048,11 @@
                     </div>
                 </div>`;
             modalContainer.classList.remove('hidden');
+            document.body.classList.add('overflow-hidden');
             document.getElementById('save-sheet-btn').onclick = () => saveSheet(id);
         }
         
+        // MODIFICA: Aggiunto color picker al modal dei contenitori
         function openContainerModal(id = null) {
             const container = id ? state.sheetContainers.find(c => c.id === id) : null;
             const title = container ? 'Modifica Contenitore' : 'Nuovo Contenitore';
@@ -1042,6 +1062,13 @@
                     <div class="space-y-4">
                         <input type="text" id="container-name" placeholder="Nome Contenitore" class="input-field" value="${container?.name || ''}">
                         <textarea id="container-description" placeholder="Descrizione (opzionale)" class="input-field min-h-[100px]">${container?.description || ''}</textarea>
+                        <div>
+                            <label class="text-sm font-medium text-gray-700">Colore Sfondo</label>
+                            <input type="hidden" id="container-color" value="${container?.color || CONTAINER_COLORS[0]}">
+                            <div class="flex flex-wrap gap-2 mt-2">
+                                ${CONTAINER_COLORS.map(c => `<div onclick="document.getElementById('container-color').value='${c}'; document.querySelectorAll('.color-dot').forEach(d=>d.classList.remove('selected')); this.classList.add('selected');" class="color-dot w-8 h-8 ${(container?.color || CONTAINER_COLORS[0]) === c ? 'selected' : ''}" style="background-color:${c}"></div>`).join('')}
+                            </div>
+                        </div>
                     </div>
                     <div class="flex justify-end gap-2 mt-6">
                         <button onclick="window.app.closeModal()" class="material-button material-button-text">Annulla</button>
@@ -1049,6 +1076,7 @@
                     </div>
                 </div>`;
             modalContainer.classList.remove('hidden');
+            document.body.classList.add('overflow-hidden');
             document.getElementById('save-container-btn').onclick = () => saveContainer(id);
         }
 
@@ -1075,6 +1103,7 @@
                         </div>
                     </div>`;
                 modalContainer.classList.remove('hidden');
+                document.body.classList.add('overflow-hidden');
                 return;
             }
 
@@ -1134,6 +1163,7 @@
                 </div>
             `;
             modalContainer.classList.remove('hidden');
+            document.body.classList.add('overflow-hidden');
             document.getElementById('save-history-btn').onclick = () => saveHistoryItem(exercise.id, historyId);
         }
 
@@ -1276,6 +1306,7 @@
             
             renderContent('exercise');
             modalContainer.classList.remove('hidden');
+            document.body.classList.add('overflow-hidden');
         }
         
         // --- RENDER TAB DEI MODAL ---
@@ -1558,7 +1589,6 @@
             });
         }
         
-        // --- MODIFICA INIZIO ---
         async function saveSheet(id = null) {
             const { userId } = state;
             if (!userId) return showToast("Utente non autenticato.", 'error');
@@ -1610,14 +1640,16 @@
             });
         }
         
+        // MODIFICA: Salvataggio del colore del contenitore
         async function saveContainer(id = null) {
             const { userId } = state;
             if (!userId) return showToast("Utente non autenticato.", 'error');
             const name = document.getElementById('container-name').value.trim();
             const description = document.getElementById('container-description').value.trim();
+            const color = document.getElementById('container-color').value;
             if (!name) return showToast("Il nome del contenitore è obbligatorio.", 'error');
             
-            const data = { name, description, updatedAt: serverTimestamp() };
+            const data = { name, description, color, updatedAt: serverTimestamp() };
             const collectionPath = `/users/${userId}/sheetContainers`;
             try {
                 if (id) {
@@ -1637,7 +1669,6 @@
                 showToast("Errore durante il salvataggio.", 'error');
             }
         }
-        // --- MODIFICA FINE ---
 
         async function deleteContainer(id) {
             const { userId } = state;
@@ -1895,6 +1926,7 @@
 
 
             modalContainer.classList.remove('hidden');
+            document.body.classList.add('overflow-hidden');
         }
 
         async function toggleSheetItemDeactivated(sheetId, itemId, isDeactivated) {
@@ -1947,6 +1979,9 @@
                     </div>
                 </div>
             `;
+            modalContainer.classList.remove('hidden');
+            document.body.classList.add('overflow-hidden');
+            
             document.getElementById('save-item-changes-btn').onclick = async () => {
                 const { userId } = state;
                 if (!userId) return;
@@ -2057,7 +2092,7 @@
             toggleTimer, resetTimer,
             openContainerModal, deleteContainer,
             toggleExpansion,
-            reorderEntity // --- NUOVA FUNZIONE ESPOSTA
+            reorderEntity
         };
         
         function startApp() {
@@ -2084,12 +2119,10 @@
             
             const basePath = `/users/${userId}`;
 
-            // --- MODIFICA QUERY FIRESTORE ---
             onSnapshot(query(collection(db, `${basePath}/categories`), orderBy("name")), s => { state.categories = s.docs.map(d=>({id:d.id,...d.data()})); render(); }, e => console.error("categories listener error:", e));
             onSnapshot(query(collection(db, `${basePath}/exercises`)), s => { state.exercises = s.docs.map(d=>({id:d.id,...d.data()})); render(); }, e => console.error("exercises listener error:", e));
             onSnapshot(query(collection(db, `${basePath}/exerciseHistory`), orderBy("timestamp", "desc")), s => { state.history = s.docs.map(d=>({id:d.id,...d.data()})); render(); }, e => console.error("exerciseHistory listener error:", e));
             
-            // Ordina per il nuovo campo 'order'
             onSnapshot(query(collection(db, `${basePath}/sheetContainers`), orderBy("order")), s => { state.sheetContainers = s.docs.map(d=>({id:d.id,...d.data()})); render(); }, e => console.error("sheetContainers listener error:", e));
             onSnapshot(query(collection(db, `${basePath}/workoutSheets`), orderBy("order")), s => {
                 const newSheets = s.docs.map(d=>({id:d.id,...d.data()}));
