@@ -1125,6 +1125,11 @@
 
             const exercise = state.exercises.find(e => e.id === exerciseIdToUse);
             if (!exercise) return showToast("Esercizio non trovato.", 'error');
+            
+            // Trova l'ultimo storico per pre-compilare i campi se si sta aggiungendo una nuova voce
+            const latestHistoryItem = historyId ? null : state.history
+                .filter(h => h.exerciseId === exerciseIdToUse && h.params)
+                .sort((a, b) => b.timestamp.seconds - a.timestamp.seconds)[0];
 
             const title = historyId ? 'Modifica Documentazione' : 'Aggiungi Documentazione';
             
@@ -1139,8 +1144,15 @@
                         <div id="params-container" class="space-y-4">
                              ${(exercise.parameters && exercise.parameters.length > 0) ? exercise.parameters.map(paramName => {
                                  let sets = [];
-                                 try { sets = JSON.parse(historyItem?.params?.[paramName]?.value || '[{}]'); } catch(e){ sets = [{}]; }
-                                 if (sets.length === 0) sets.push({});
+                                 // Carica i valori dello storico da modificare, o dell'ultimo storico se è una nuova voce
+                                 const valuesToLoad = historyItem?.params?.[paramName]?.value || latestHistoryItem?.params?.[paramName]?.value;
+                                 try { 
+                                     sets = JSON.parse(valuesToLoad || '[{}]'); 
+                                 } catch(e){ 
+                                     sets = [{}]; 
+                                 }
+                                 if (!Array.isArray(sets) || sets.length === 0) { sets = [{}]; }
+                                 
                                  const paramId = sanitizeForId(paramName);
                                  return `
                                     <div class="p-2 border rounded" data-param-name="${paramName}">
