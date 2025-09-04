@@ -1408,26 +1408,44 @@
         }
         
         // --- FUNZIONI GEMINI API ---
-
+        
         function renderExerciseAiTab(exercise) {
             const container = document.getElementById('tab-content-ai');
-            container.innerHTML = `
-                <div class="text-center">
-                    <button id="get-ai-info-btn" class="material-button material-button-filled">✨ Chiedi all'AI</button>
-                </div>
-                <div id="ai-info-content" class="mt-4 prose max-w-none"></div>
-            `;
+            if (exercise.aiDetails) {
+                 container.innerHTML = `
+                    <div id="ai-info-content" class="prose max-w-none">${exercise.aiDetails}</div>
+                    <div class="text-center mt-4">
+                        <button id="get-ai-info-btn" class="material-button material-button-outlined">✨ Rigenera con AI</button>
+                    </div>
+                `;
+            } else {
+                 container.innerHTML = `
+                    <div class="text-center">
+                        <button id="get-ai-info-btn" class="material-button material-button-filled">✨ Chiedi all'AI</button>
+                    </div>
+                    <div id="ai-info-content" class="mt-4 prose max-w-none"></div>
+                `;
+            }
             document.getElementById('get-ai-info-btn').onclick = () => getAiExerciseInfo(exercise);
         }
 
         async function callGeminiAPI(prompt, isJson = false) {
-            const apiKey = ""; // Lasciato vuoto come da istruzioni
+            // ====================================================================================
+            // IMPORTANTE: Sostituisci la stringa vuota con la tua chiave API di Google AI Studio
+            // per far funzionare l'applicazione al di fuori di questo ambiente di sviluppo.
+            // Puoi ottenere una chiave da https://aistudio.google.com/
+            // ====================================================================================
+            const apiKey = "AIzaSyDQsDl_3T9b9ludO4DCiRvifzPYvNVM9t8"; 
+
+            if (apiKey === "INSERISCI_QUI_LA_TUA_CHIAVE_API") {
+                 showToast("Chiave API di Gemini non configurata.", "error");
+                 console.error("ERRORE: La chiave API di Gemini non è stata impostata. Inseriscila nella funzione 'callGeminiAPI'.");
+                 return null;
+            }
+            
             const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
 
-            const payload = {
-                contents: [{ parts: [{ text: prompt }] }],
-            };
-
+            const payload = { contents: [{ parts: [{ text: prompt }] }] };
             if (isJson) {
                 payload.generationConfig = { responseMimeType: "application/json" };
             }
@@ -1438,27 +1456,22 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload)
                 });
-
                 if (!response.ok) {
                     const errorBody = await response.json();
                     console.error("API Error Response:", errorBody);
                     throw new Error(`Errore API: ${response.statusText}`);
                 }
-
                 const result = await response.json();
                 const text = result.candidates?.[0]?.content?.parts?.[0]?.text;
-                if (!text) {
-                    throw new Error("Risposta API non valida o vuota.");
-                }
+                if (!text) throw new Error("Risposta API non valida o vuota.");
                 return text;
-
             } catch (error) {
                 console.error("Errore chiamata Gemini API:", error);
                 showToast("Errore durante la comunicazione con l'AI.", "error");
                 return null;
             }
         }
-
+        
         async function getAiExerciseInfo(exercise) {
             const button = document.getElementById('get-ai-info-btn');
             const contentDiv = document.getElementById('ai-info-content');
@@ -1479,9 +1492,11 @@
             button.disabled = false;
             if (responseText) {
                  contentDiv.innerHTML = responseText;
+                 button.textContent = '✨ Rigenera con AI';
+                 button.className = 'material-button material-button-outlined';
+                 saveAiDetailsToExercise(exercise.id, responseText);
             } else {
                  contentDiv.innerHTML = '<p class="text-center text-red-500">Impossibile ottenere le informazioni.</p>';
-                 button.style.display = 'block';
             }
         }
 
@@ -1586,8 +1601,7 @@
                 const { userId } = state;
                 const batch = writeBatch(db);
 
-                // Trova l'ordine più alto per le nuove schede
-                let maxOrder = state.sheets.reduce((max, s) => Math.max(max, s.order || 0), -1);
+                let maxOrder = state.sheets.reduce((max, s) => Math.max(s.order || 0), -1);
 
                 for (const day of plan.days) {
                     maxOrder++;
@@ -1608,7 +1622,7 @@
                         const exercise = state.exercises.find(ex => ex.name.toLowerCase() === item.exerciseName?.toLowerCase());
                         if (item.type === 'exercise' && !exercise) {
                             console.warn(`AI ha suggerito l'esercizio "${item.exerciseName}" non trovato nel database. Saltato.`);
-                            continue; // Salta l'esercizio se non trovato
+                            continue;
                         }
 
                         const itemData = {
@@ -1642,6 +1656,18 @@
         }
         
         // --- LOGICA DATABASE (Firestore) ---
+        
+        async function saveAiDetailsToExercise(exerciseId, details) {
+            const { userId } = state;
+            if (!userId || !exerciseId) return;
+            try {
+                const docRef = doc(db, `/users/${userId}/exercises`, exerciseId);
+                await updateDoc(docRef, { aiDetails: details });
+            } catch (e) {
+                console.error("Errore durante il salvataggio dei dettagli AI:", e);
+            }
+        }
+        
         async function saveCategory(id = null) {
             const { userId } = state;
             if (!userId) return showToast("Utente non autenticato.", 'error');
@@ -1706,8 +1732,17 @@
             const parameters = Array.from(document.querySelectorAll('#parameters-list > div'))
                 .map(div => div.querySelector('input').value.trim())
                 .filter(Boolean);
-
-            const data = { name, zone, categoryId, parameters, updatedAt: serverTimestamp() };
+            
+            const existingExercise = id ? state.exercises.find(e => e.id === id) : {};
+            const data = { 
+                name, 
+                zone, 
+                categoryId, 
+                parameters, 
+                updatedAt: serverTimestamp(),
+                aiDetails: existingExercise.aiDetails || null 
+            };
+            
             const collectionPath = `/users/${userId}/exercises`;
 
             try {
