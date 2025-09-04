@@ -147,6 +147,27 @@
         .toast {
             transition: opacity 0.3s, transform 0.3s;
         }
+
+        /* Stili per il loader */
+        .loader {
+            width: 48px;
+            height: 48px;
+            border: 5px solid #FFF;
+            border-bottom-color: #6750A4;
+            border-radius: 50%;
+            display: inline-block;
+            box-sizing: border-box;
+            animation: rotation 1s linear infinite;
+        }
+
+        @keyframes rotation {
+            0% {
+                transform: rotate(0deg);
+            }
+            100% {
+                transform: rotate(360deg);
+            }
+        }
     </style>
 </head>
 <body class="antialiased">
@@ -209,11 +230,16 @@
 
         <main class="container mx-auto p-4 pb-20 md:pb-4">
             <div id="page-sheets" class="hidden">
-                <div class="flex justify-between items-center mb-4">
+                <div class="flex justify-between items-center mb-4 flex-wrap gap-2">
                     <h2 class="text-2xl font-medium">Schede Allenamento</h2>
-                     <button id="add-container-btn" class="material-button material-button-outlined flex items-center gap-2">
-                        <span class="material-icons">create_new_folder</span> Contenitore
-                    </button>
+                    <div class="flex gap-2">
+                        <button id="add-container-btn" class="material-button material-button-outlined flex items-center gap-2">
+                           <span class="material-icons">create_new_folder</span> Contenitore
+                       </button>
+                        <button id="ai-generator-btn" class="material-button material-button-filled flex items-center gap-2">
+                           <span class="material-icons">auto_awesome</span> ✨ Genera con AI
+                       </button>
+                    </div>
                 </div>
                 <div class="flex flex-col md:flex-row gap-2 mb-4">
                      <input type="text" id="search-sheets" placeholder="Cerca per nome scheda, esercizio, categoria..." class="input-field flex-grow">
@@ -323,7 +349,6 @@
             '#ef4444', '#f97316', '#f59e0b', '#84cc16', '#22c55e', 
             '#10b981', '#06b6d4', '#3b82f6', '#8b5cf6', '#d946ef'
         ];
-        // MODIFICA: Aggiunta palette colori per i contenitori
         const CONTAINER_COLORS = [
             '#EFF6FF', '#F0FDF4', '#FEFCE8', '#FFF7ED', 
             '#FEF2F2', '#F5F3FF', '#FDF2F8', '#F3F4F6'
@@ -346,7 +371,6 @@
         // --- FUNZIONE UTILITY DI SANIFICAZIONE ---
         function sanitizeForId(text) {
             if (!text) return '';
-            // Sostituisce spazi e underscore con trattini, poi rimuove tutti i caratteri non alfanumerici o trattini
             return text.replace(/[\s_]/g, '-').replace(/[^a-zA-Z0-9-]/g, '');
         }
 
@@ -387,7 +411,7 @@
         
         // --- FUNZIONI DI RENDERING ---
         function render() {
-            if (!state.userId) return; // Non renderizzare nulla se non siamo loggati
+            if (!state.userId) return;
             switch (state.currentPage) {
                 case 'sheets': renderSheetsPage(); break;
                 case 'history': renderHistoryPage(); break;
@@ -574,7 +598,6 @@
             `).join('');
         }
         
-        // Rendering Schede
         function renderSheetsPage() {
             const list = document.getElementById('sheets-list');
             if (!list) return;
@@ -582,7 +605,6 @@
             const searchTerm = document.getElementById('search-sheets').value.toLowerCase();
             const expansionState = getExpansionState();
 
-            // Filtra le schede PRIMA di raggrupparle
             const filteredSheets = state.sheets.filter(sheet => {
                 if (searchTerm === '') return true;
                 if (sheet.name.toLowerCase().includes(searchTerm) || (sheet.description && sheet.description.toLowerCase().includes(searchTerm))) {
@@ -598,7 +620,6 @@
                 });
             });
 
-            // Raggruppa le schede FILTRATE
             const sheetsByContainer = filteredSheets.reduce((acc, sheet) => {
                 const containerId = sheet.containerId || 'unassigned';
                 if (!acc[containerId]) acc[containerId] = [];
@@ -607,17 +628,15 @@
             }, {});
 
             if (state.sheets.length === 0 && state.sheetContainers.length === 0) {
-                list.innerHTML = `<p class="text-center text-gray-500">Nessuna scheda o contenitore. Inizia creando una scheda con il pulsante flottante o un contenitore.</p>`;
+                list.innerHTML = `<p class="text-center text-gray-500">Nessuna scheda o contenitore. Inizia creando una scheda o usa il ✨ generatore AI.</p>`;
                 return;
             }
             
-            // Renderizza i contenitori
             let html = state.sheetContainers.map((container, index, allContainers) => {
                 const sheets = sheetsByContainer[container.id] || [];
-                if (searchTerm !== '' && sheets.length === 0) return ''; // Nasconde contenitori vuoti durante la ricerca
+                if (searchTerm !== '' && sheets.length === 0) return '';
 
                 const isExpanded = expansionState.containers.includes(container.id);
-                // MODIFICA: Utilizzo del colore del contenitore e icona neutra
                 return `
                     <div class="material-card" style="background-color: ${container.color || '#EFF6FF'}">
                         <div class="p-4 cursor-pointer" onclick="window.app.toggleExpansion('container', '${container.id}')">
@@ -645,7 +664,6 @@
                 `;
             }).join('');
 
-            // Aggiunge le schede non assegnate
             const unassignedSheets = sheetsByContainer['unassigned'] || [];
             if (unassignedSheets.length > 0) {
                  html += `
@@ -839,12 +857,10 @@
             }
 
             confirmModal.classList.remove('hidden');
-            // MODIFICA: Blocco scroll pagina
             document.body.classList.add('overflow-hidden');
 
             const close = () => {
                 confirmModal.classList.add('hidden');
-                 // MODIFICA: Sblocco scroll pagina
                 document.body.classList.remove('overflow-hidden');
             }
             
@@ -882,7 +898,6 @@
             return `${String(min).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
         }
         
-        // --- GESTIONE STATO ESPANSIONE ---
         const EXPANSION_STATE_KEY = 'workoutTrackerExpansionState';
 
         function getExpansionState() {
@@ -935,7 +950,6 @@
         function closeModal() {
             modalContainer.classList.add('hidden');
             modalContainer.innerHTML = '';
-            // MODIFICA: Sblocco scroll pagina
             document.body.classList.remove('overflow-hidden');
         }
 
@@ -978,11 +992,13 @@
                         <button id="tab-info" class="tab-button flex-1 active">Info</button>
                         <button id="tab-progress" class="tab-button flex-1 ${!id ? 'hidden' : ''}">Progressi</button>
                         <button id="tab-diary" class="tab-button flex-1 ${!id ? 'hidden' : ''}">Diario</button>
+                        <button id="tab-ai" class="tab-button flex-1 ${!id ? 'hidden' : ''}">✨ Dettagli AI</button>
                     </div>
                     <div class="p-6 overflow-y-auto flex-1">
                         <div id="tab-content-info"></div>
                         <div id="tab-content-progress" class="hidden"></div>
                         <div id="tab-content-diary" class="hidden"></div>
+                        <div id="tab-content-ai" class="hidden"></div>
                     </div>
                     <div class="flex justify-between items-center p-4 bg-gray-50 border-t">
                         <div>
@@ -996,7 +1012,7 @@
                 </div>
             `;
             
-            const tabs = ['info', 'progress', 'diary'];
+            const tabs = ['info', 'progress', 'diary', 'ai'];
             tabs.forEach(tab => {
                 const tabButton = document.getElementById(`tab-${tab}`);
                 if (tabButton) {
@@ -1015,6 +1031,7 @@
             if (id) {
                 renderExerciseProgressTab(exercise);
                 renderExerciseDiaryTab(exercise);
+                renderExerciseAiTab(exercise);
             }
 
             modalContainer.classList.remove('hidden');
@@ -1052,7 +1069,6 @@
             document.getElementById('save-sheet-btn').onclick = () => saveSheet(id);
         }
         
-        // MODIFICA: Aggiunto color picker al modal dei contenitori
         function openContainerModal(id = null) {
             const container = id ? state.sheetContainers.find(c => c.id === id) : null;
             const title = container ? 'Modifica Contenitore' : 'Nuovo Contenitore';
@@ -1168,7 +1184,7 @@
         }
 
         function addItemsToSheet(sheetId) {
-            let selectionOrder = []; // Esercizi selezionati in ordine
+            let selectionOrder = [];
 
             function renderExerciseSelection() {
                 const listContainer = document.getElementById('exercise-selection-list');
@@ -1363,7 +1379,6 @@
             `;
         }
 
-
         function renderExerciseDiaryTab(exercise) {
              const container = document.getElementById('tab-content-diary');
              const diaryEntries = state.history.filter(h => h.exerciseId === exercise.id && h.diary)
@@ -1391,7 +1406,241 @@
                 </div>
             `;
         }
+        
+        // --- FUNZIONI GEMINI API ---
 
+        function renderExerciseAiTab(exercise) {
+            const container = document.getElementById('tab-content-ai');
+            container.innerHTML = `
+                <div class="text-center">
+                    <button id="get-ai-info-btn" class="material-button material-button-filled">✨ Chiedi all'AI</button>
+                </div>
+                <div id="ai-info-content" class="mt-4 prose max-w-none"></div>
+            `;
+            document.getElementById('get-ai-info-btn').onclick = () => getAiExerciseInfo(exercise);
+        }
+
+        async function callGeminiAPI(prompt, isJson = false) {
+            const apiKey = ""; // Lasciato vuoto come da istruzioni
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
+
+            const payload = {
+                contents: [{ parts: [{ text: prompt }] }],
+            };
+
+            if (isJson) {
+                payload.generationConfig = { responseMimeType: "application/json" };
+            }
+
+            try {
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                if (!response.ok) {
+                    const errorBody = await response.json();
+                    console.error("API Error Response:", errorBody);
+                    throw new Error(`Errore API: ${response.statusText}`);
+                }
+
+                const result = await response.json();
+                const text = result.candidates?.[0]?.content?.parts?.[0]?.text;
+                if (!text) {
+                    throw new Error("Risposta API non valida o vuota.");
+                }
+                return text;
+
+            } catch (error) {
+                console.error("Errore chiamata Gemini API:", error);
+                showToast("Errore durante la comunicazione con l'AI.", "error");
+                return null;
+            }
+        }
+
+        async function getAiExerciseInfo(exercise) {
+            const button = document.getElementById('get-ai-info-btn');
+            const contentDiv = document.getElementById('ai-info-content');
+            if (!button || !contentDiv) return;
+
+            button.disabled = true;
+            contentDiv.innerHTML = '<div class="flex justify-center"><div class="loader"></div></div>';
+
+            const prompt = `Sei un esperto personal trainer. Fornisci una spiegazione dettagliata per l'esercizio "${exercise.name}". La tua risposta deve essere in italiano e ben formattata. Includi le seguenti sezioni: 
+                1. **Esecuzione Corretta:** Spiega passo dopo passo come eseguire l'esercizio.
+                2. **Muscoli Coinvolti:** Elenca i muscoli primari e secondari allenati.
+                3. **Errori Comuni:** Descrivi 2-3 errori comuni da evitare.
+                4. **Varianti e Alternative:** Suggerisci 2-3 varianti dell'esercizio o alternative che colpiscono muscoli simili.
+                Formatta la risposta usando HTML con paragrafi, liste puntate e grassetto per i titoli. Non includere \`\`\`html o markdown.`;
+
+            const responseText = await callGeminiAPI(prompt);
+            
+            button.disabled = false;
+            if (responseText) {
+                 contentDiv.innerHTML = responseText;
+            } else {
+                 contentDiv.innerHTML = '<p class="text-center text-red-500">Impossibile ottenere le informazioni.</p>';
+                 button.style.display = 'block';
+            }
+        }
+
+        function openAiGeneratorModal() {
+             modalContainer.innerHTML = `
+                <div class="modal-content p-6 overflow-y-auto">
+                    <h3 class="text-xl font-medium mb-1">✨ Generatore di Schede AI</h3>
+                    <p class="text-sm text-gray-500 mb-6">Descrivi il tuo obiettivo e l'AI creerà un piano per te.</p>
+                    <div id="ai-generator-form" class="space-y-4">
+                        <input type="text" id="ai-sheet-name" placeholder="Nome del nuovo piano (es. 'Massa Muscolare 3 giorni')" class="input-field">
+                        <div>
+                            <label for="ai-goal" class="text-sm font-medium text-gray-700">Qual è il tuo obiettivo principale?</label>
+                            <select id="ai-goal" class="input-field mt-1">
+                                <option value="ipertrofia">Ipertrofia (Aumento massa muscolare)</option>
+                                <option value="forza">Forza Massimale</option>
+                                <option value="resistenza">Resistenza Muscolare</option>
+                                <option value="dimagrimento">Dimagrimento e Condizionamento</option>
+                            </select>
+                        </div>
+                        <div>
+                           <label for="ai-days" class="text-sm font-medium text-gray-700">Quanti giorni a settimana ti alleni?</label>
+                           <input type="number" id="ai-days" placeholder="Es. 3" class="input-field mt-1" min="1" max="7">
+                        </div>
+                        <div>
+                           <label for="ai-equipment" class="text-sm font-medium text-gray-700">Quale attrezzatura hai a disposizione?</label>
+                           <textarea id="ai-equipment" placeholder="Es. manubri, bilanciere, panca, sbarra per trazioni, elastici..." class="input-field min-h-[100px] mt-1"></textarea>
+                        </div>
+                    </div>
+                     <div id="ai-generator-loader" class="hidden text-center py-8">
+                        <div class="flex justify-center mb-4"><div class="loader"></div></div>
+                        <p>L'AI sta creando il tuo piano personalizzato...</p>
+                        <p class="text-sm text-gray-500">Potrebbe richiedere fino a 30 secondi.</p>
+                    </div>
+                    <div class="flex justify-end gap-2 mt-6">
+                        <button onclick="window.app.closeModal()" class="material-button material-button-text">Annulla</button>
+                        <button id="generate-ai-sheet-btn" class="material-button material-button-filled">✨ Genera Piano</button>
+                    </div>
+                </div>`;
+            modalContainer.classList.remove('hidden');
+            document.body.classList.add('overflow-hidden');
+            document.getElementById('generate-ai-sheet-btn').onclick = generateAiSheet;
+        }
+
+        async function generateAiSheet() {
+            const name = document.getElementById('ai-sheet-name').value.trim();
+            const goal = document.getElementById('ai-goal').value;
+            const days = document.getElementById('ai-days').value;
+            const equipment = document.getElementById('ai-equipment').value.trim();
+
+            if (!name || !goal || !days || !equipment) {
+                return showToast("Per favore, compila tutti i campi.", "error");
+            }
+
+            document.getElementById('ai-generator-form').classList.add('hidden');
+            document.getElementById('generate-ai-sheet-btn').classList.add('hidden');
+            document.getElementById('ai-generator-loader').classList.remove('hidden');
+
+            const availableExercises = state.exercises.map(ex => `"${ex.name}"`).join(', ');
+
+            const prompt = `Sei un esperto personal trainer. Crea un piano di allenamento dettagliato basato sulle seguenti informazioni:
+            - Obiettivo: ${goal}
+            - Giorni di allenamento a settimana: ${days}
+            - Attrezzatura disponibile: ${equipment}
+            - Esercizi disponibili nel database dell'utente: [${availableExercises}]
+
+            ISTRUZIONI IMPORTANTI:
+            1. Usa SOLO ed ESCLUSIVAMENTE gli esercizi dalla lista fornita. Non inventare esercizi. Se la lista è vuota, rispondi con un errore.
+            2. Se mancano esercizi fondamentali per l'obiettivo, aggiungi un commento nella sezione "notes".
+            3. Crea ${days} schede distinte, una per ogni giorno di allenamento.
+            4. Per ogni esercizio, suggerisci un numero di serie e ripetizioni (es. 3x10, 4x8, 5x5) e inseriscilo nel campo "text" di un elemento di tipo "text" subito dopo l'esercizio.
+            5. Inserisci una pausa (elemento "pause") dopo ogni esercizio. La durata dovrebbe essere tra 60 e 120 secondi.
+            
+            Restituisci la risposta ESCLUSIVAMENTE in formato JSON. Il JSON deve avere la seguente struttura:
+            {
+              "description": "Una breve descrizione generale del piano di allenamento.",
+              "notes": "Note generali o consigli per l'utente, come ad esempio suggerimenti su esercizi mancanti.",
+              "days": [
+                {
+                  "dayName": "Giorno A: Nome della sessione (es. Spinta)",
+                  "items": [
+                    { "type": "exercise", "exerciseName": "Nome Esatto Esercizio Dal Database" },
+                    { "type": "text", "text": "3x10" },
+                    { "type": "pause", "duration": 90 },
+                    { "type": "exercise", "exerciseName": "Altro Esercizio" },
+                    { "type": "text", "text": "4x8" },
+                    { "type": "pause", "duration": 120 }
+                  ]
+                }
+              ]
+            }`;
+
+            const responseJsonString = await callGeminiAPI(prompt, true);
+            if (!responseJsonString) {
+                 document.getElementById('ai-generator-form').classList.remove('hidden');
+                 document.getElementById('generate-ai-sheet-btn').classList.remove('hidden');
+                 document.getElementById('ai-generator-loader').classList.add('hidden');
+                 return;
+            }
+
+            try {
+                const plan = JSON.parse(responseJsonString);
+                const { userId } = state;
+                const batch = writeBatch(db);
+
+                // Trova l'ordine più alto per le nuove schede
+                let maxOrder = state.sheets.reduce((max, s) => Math.max(max, s.order || 0), -1);
+
+                for (const day of plan.days) {
+                    maxOrder++;
+                    const sheetData = {
+                        name: `${name} - ${day.dayName}`,
+                        description: plan.description || '',
+                        notes: plan.notes || '',
+                        containerId: null,
+                        order: maxOrder,
+                        createdAt: serverTimestamp(),
+                        updatedAt: serverTimestamp()
+                    };
+                    const sheetRef = doc(collection(db, `/users/${userId}/workoutSheets`));
+                    batch.set(sheetRef, sheetData);
+
+                    let itemOrder = 0;
+                    for (const item of day.items) {
+                        const exercise = state.exercises.find(ex => ex.name.toLowerCase() === item.exerciseName?.toLowerCase());
+                        if (item.type === 'exercise' && !exercise) {
+                            console.warn(`AI ha suggerito l'esercizio "${item.exerciseName}" non trovato nel database. Saltato.`);
+                            continue; // Salta l'esercizio se non trovato
+                        }
+
+                        const itemData = {
+                            ...item,
+                            order: itemOrder++,
+                            isDone: false,
+                            isDeactivated: false,
+                            createdAt: serverTimestamp()
+                        };
+                        if (item.type === 'exercise') {
+                            itemData.exerciseId = exercise.id;
+                            delete itemData.exerciseName;
+                        }
+                        
+                        const itemRef = doc(collection(db, sheetRef.path, 'items'));
+                        batch.set(itemRef, itemData);
+                    }
+                }
+                
+                await batch.commit();
+                closeModal();
+                showToast("Piano di allenamento generato con successo!", "success");
+
+            } catch(e) {
+                console.error("Errore durante il parsing o salvataggio del piano AI:", e);
+                showToast("L'AI ha restituito un formato non valido. Riprova.", "error");
+                document.getElementById('ai-generator-form').classList.remove('hidden');
+                document.getElementById('generate-ai-sheet-btn').classList.remove('hidden');
+                document.getElementById('ai-generator-loader').classList.add('hidden');
+            }
+        }
+        
         // --- LOGICA DATABASE (Firestore) ---
         async function saveCategory(id = null) {
             const { userId } = state;
@@ -1449,8 +1698,8 @@
             const { userId } = state;
             if (!userId) return showToast("Utente non autenticato.", 'error');
             const name = document.getElementById('exercise-name').value.trim();
-            const zone = document.getElementById('exercise-zone').value || null; // Salva null se vuoto
-            const categoryId = document.getElementById('exercise-category').value || null; // Salva null se vuoto
+            const zone = document.getElementById('exercise-zone').value || null;
+            const categoryId = document.getElementById('exercise-category').value || null;
             
             if (!name) return showToast("Il nome dell'esercizio è obbligatorio.", 'error');
 
@@ -1606,10 +1855,9 @@
                 if (id) {
                     await setDoc(doc(db, collectionPath, id), data, { merge: true });
                 } else {
-                    // Assegna un 'order' solo alla creazione
                     const q = query(collection(db, collectionPath));
                     const snapshot = await getDocs(q);
-                    data.order = snapshot.size; // Lo mette in fondo alla lista
+                    data.order = snapshot.size;
                     data.createdAt = serverTimestamp();
                     await addDoc(collection(db, collectionPath), data);
                 }
@@ -1640,7 +1888,6 @@
             });
         }
         
-        // MODIFICA: Salvataggio del colore del contenitore
         async function saveContainer(id = null) {
             const { userId } = state;
             if (!userId) return showToast("Utente non autenticato.", 'error');
@@ -1655,10 +1902,9 @@
                 if (id) {
                     await setDoc(doc(db, collectionPath, id), data, { merge: true });
                 } else {
-                    // Assegna un 'order' solo alla creazione
                     const q = query(collection(db, collectionPath));
                     const snapshot = await getDocs(q);
-                    data.order = snapshot.size; // Lo mette in fondo alla lista
+                    data.order = snapshot.size;
                     data.createdAt = serverTimestamp();
                     await addDoc(collection(db, collectionPath), data);
                 }
@@ -1785,7 +2031,6 @@
             } catch(e) { console.error(e); showToast("Errore riordinamento.", 'error'); }
         }
 
-        // --- NUOVA FUNZIONE DI RIORDINAMENTO ---
         async function reorderEntity(type, entityId, direction) {
             const { userId } = state;
             if (!userId) return;
@@ -1800,7 +2045,6 @@
                 const currentSheet = state.sheets.find(s => s.id === entityId);
                 if (!currentSheet) return;
 
-                // Determina il gruppo di appartenenza (dentro un container o non assegnate)
                 if (currentSheet.containerId) {
                     list = state.sheets.filter(s => s.containerId === currentSheet.containerId);
                 } else {
@@ -1808,10 +2052,9 @@
                 }
                 collectionPath = `/users/${userId}/workoutSheets`;
             } else {
-                return; // Tipo non supportato
+                return;
             }
 
-            // Assicura che la lista sia ordinata (il listener già lo fa, ma è una sicurezza)
             list.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
 
             const currentIndex = list.findIndex(item => item.id === entityId);
@@ -1823,22 +2066,18 @@
             const currentItem = list[currentIndex];
             const targetItem = list[targetIndex];
 
-            // Prepara il batch di scrittura
             const batch = writeBatch(db);
 
-            // "Just-in-time migration": se qualche elemento non ha un 'order', assegnalo a tutti
             const needsOrderMigration = list.some(item => typeof item.order !== 'number');
             if (needsOrderMigration) {
                 list.forEach((item, index) => {
                     const itemRef = doc(db, collectionPath, item.id);
                     batch.update(itemRef, { order: index });
                 });
-                // Riassegna i valori corretti per lo scambio dopo la migrazione
                 currentItem.order = currentIndex;
                 targetItem.order = targetIndex;
             }
 
-            // Scambia i valori di 'order'
             const currentRef = doc(db, collectionPath, currentItem.id);
             const targetRef = doc(db, collectionPath, targetItem.id);
             batch.update(currentRef, { order: targetItem.order });
@@ -1945,7 +2184,7 @@
             if (!userId) return;
              try {
                 const docRef = doc(db, `/users/${userId}/workoutSheets/${sheetId}/items`, itemId);
-                await updateDoc(docRef, { label: label }); // label può essere un oggetto o null
+                await updateDoc(docRef, { label: label });
                 closeModal();
             } catch(e) { console.error(e); showToast("Errore aggiornamento etichetta.", 'error'); }
         }
@@ -2012,10 +2251,10 @@
 
         function toggleTimer(itemId, duration) {
             const timerId = `timer-${itemId}`;
-            if (state.timers[timerId]?.intervalId) { // Sta andando, mettilo in pausa
+            if (state.timers[timerId]?.intervalId) {
                 clearInterval(state.timers[timerId].intervalId);
                 state.timers[timerId].intervalId = null;
-            } else { // È in pausa o non partito, avvialo
+            } else { 
                 if (!state.timers[timerId]) {
                     state.timers[timerId] = { remaining: duration, isFinished: false };
                 }
@@ -2032,7 +2271,7 @@
                     }
                 }, 1000);
             }
-             render(); // Aggiorna UI per bottone play/pausa
+             render();
         }
 
         function resetTimer(itemId, duration) {
@@ -2051,35 +2290,26 @@
 
         // --- SETUP INIZIALE ---
         
-        window.app = { // Rendi le funzioni accessibili dall'HTML
-            closeModal,
-            openCategoryModal, deleteCategory,
-            openExerciseModal, deleteExercise,
+        window.app = {
+            closeModal, openCategoryModal, deleteCategory, openExerciseModal, deleteExercise,
             openAddHistoryModal, deleteHistoryItem,
             addParameterField() {
                 const container = document.getElementById('parameters-list');
                 const div = document.createElement('div');
                 div.className = "flex items-center gap-2";
-                div.innerHTML = `
-                    <input type="text" class="input-field !p-2 flex-grow" placeholder="Es: Peso, Ripetizioni...">
-                    <button onclick="this.parentElement.remove()" class="material-button-text p-2 rounded-full"><span class="material-icons">remove_circle_outline</span></button>
-                `;
+                div.innerHTML = `<input type="text" class="input-field !p-2 flex-grow" placeholder="Es: Peso, Ripetizioni..."><button onclick="this.parentElement.remove()" class="material-button-text p-2 rounded-full"><span class="material-icons">remove_circle_outline</span></button>`;
                 container.appendChild(div);
             },
-            addParamSet(paramId) { // Aggiunge una nuova riga (set)
+            addParamSet(paramId) {
                 const container = document.getElementById(`sets-for-${paramId}`);
                 const index = container.children.length;
                 const div = document.createElement('div');
                 div.className = "flex gap-1.5 items-center";
                 div.dataset.setIndex = index;
-                div.innerHTML = `
-                    <input type="text" placeholder="" class="input-field !p-2 flex-1" value="">
-                    <button onclick="window.app.addInputFieldToSet(this)" class="material-button-text p-2 rounded-full !min-w-0"><span class="material-icons">add</span></button>
-                    <button onclick="this.parentElement.remove()" class="material-button-text p-2 rounded-full !min-w-0"><span class="material-icons">remove_circle_outline</span></button>
-                `;
+                div.innerHTML = `<input type="text" placeholder="" class="input-field !p-2 flex-1" value=""><button onclick="window.app.addInputFieldToSet(this)" class="material-button-text p-2 rounded-full !min-w-0"><span class="material-icons">add</span></button><button onclick="this.parentElement.remove()" class="material-button-text p-2 rounded-full !min-w-0"><span class="material-icons">remove_circle_outline</span></button>`;
                 container.appendChild(div);
             },
-            addInputFieldToSet(buttonElement) { // Aggiunge un campo alla riga esistente
+            addInputFieldToSet(buttonElement) {
                 const newInput = document.createElement('input');
                 newInput.type = 'text';
                 newInput.placeholder = '';
@@ -2088,25 +2318,16 @@
             },
             openSheetModal, deleteSheet, addItemsToSheet, resetSheetDoneStatus,
             toggleSheetItemDone, reorderSheetItem, openSheetItemActions,
-            deleteSheetItem,
-            toggleTimer, resetTimer,
-            openContainerModal, deleteContainer,
-            toggleExpansion,
-            reorderEntity
+            deleteSheetItem, toggleTimer, resetTimer, openContainerModal, deleteContainer,
+            toggleExpansion, reorderEntity
         };
         
         function startApp() {
             const { userId } = state;
-            if (!userId) {
-                console.error("startApp called without userId.");
-                return;
-            }
+            if (!userId) return;
 
             Object.keys(navs).forEach(key => {
-                navs[key].forEach(nav => nav.onclick = () => {
-                    stopAllTimers();
-                    navigate(key);
-                });
+                navs[key].forEach(nav => nav.onclick = () => { stopAllTimers(); navigate(key); });
             });
             
             document.getElementById('search-exercises').addEventListener('input', renderDbPage);
@@ -2116,13 +2337,13 @@
             document.getElementById('search-sheets').addEventListener('input', renderSheetsPage);
             document.getElementById('add-category-btn').onclick = () => openCategoryModal();
             document.getElementById('add-container-btn').onclick = () => openContainerModal();
+            document.getElementById('ai-generator-btn').onclick = () => openAiGeneratorModal();
             
             const basePath = `/users/${userId}`;
 
             onSnapshot(query(collection(db, `${basePath}/categories`), orderBy("name")), s => { state.categories = s.docs.map(d=>({id:d.id,...d.data()})); render(); }, e => console.error("categories listener error:", e));
             onSnapshot(query(collection(db, `${basePath}/exercises`)), s => { state.exercises = s.docs.map(d=>({id:d.id,...d.data()})); render(); }, e => console.error("exercises listener error:", e));
             onSnapshot(query(collection(db, `${basePath}/exerciseHistory`), orderBy("timestamp", "desc")), s => { state.history = s.docs.map(d=>({id:d.id,...d.data()})); render(); }, e => console.error("exerciseHistory listener error:", e));
-            
             onSnapshot(query(collection(db, `${basePath}/sheetContainers`), orderBy("order")), s => { state.sheetContainers = s.docs.map(d=>({id:d.id,...d.data()})); render(); }, e => console.error("sheetContainers listener error:", e));
             onSnapshot(query(collection(db, `${basePath}/workoutSheets`), orderBy("order")), s => {
                 const newSheets = s.docs.map(d=>({id:d.id,...d.data()}));
@@ -2212,16 +2433,11 @@
 
         onAuthStateChanged(auth, (user) => {
             if (user) {
-                console.log("Persistent user signed in. UserID:", user.uid);
                 state.userId = user.uid;
-                
                 authContainer.classList.add('hidden');
                 appContainer.classList.remove('hidden');
-
                 startApp();
             } else {
-                console.log("No persistent user signed in.");
-                
                 authContainer.classList.remove('hidden');
                 appContainer.classList.add('hidden');
             }
@@ -2230,3 +2446,4 @@
     </script>
 </body>
 </html>
+
