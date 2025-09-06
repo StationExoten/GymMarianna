@@ -193,6 +193,39 @@
         </div>
     </div>
 
+    <!-- ===== Contenitore Modalità Allenamento ===== -->
+    <div id="workout-mode-container" class="fixed inset-0 z-[80] bg-gray-100 flex-col p-4 hidden">
+        <div class="flex justify-between items-center mb-4">
+            <div>
+                <h2 id="workout-sheet-name" class="text-xl font-bold">Modalità Allenamento</h2>
+                <p id="workout-step-counter" class="text-sm text-gray-600">Passaggio 1 / 10</p>
+            </div>
+            <div class="flex items-center gap-2">
+                 <div id="workout-global-timer" class="text-lg font-mono p-2 bg-white rounded-lg shadow-sm">00:00:00</div>
+                 <button id="end-workout-btn-header" class="material-button material-button-outlined !border-red-500 !text-red-500">Termina</button>
+            </div>
+        </div>
+
+        <div id="workout-item-content" class="flex-1 overflow-y-auto p-2 bg-white rounded-lg shadow-inner">
+            <!-- Contenuto del passaggio corrente verrà inserito qui -->
+        </div>
+
+        <div id="workout-navigation" class="flex justify-between items-center mt-4">
+             <button id="workout-prev-btn" class="material-button material-button-outlined flex items-center gap-2">
+                <span class="material-icons">arrow_back</span> Precedente
+            </button>
+             <button id="workout-next-btn" class="material-button material-button-filled flex items-center gap-2">
+                Successivo <span class="material-icons">arrow_forward</span>
+            </button>
+        </div>
+         <div id="workout-finish-view" class="hidden flex-col items-center justify-center text-center p-8">
+            <span class="material-icons text-6xl text-green-500">check_circle</span>
+            <h3 class="text-2xl font-bold mt-4">Allenamento Completato!</h3>
+            <p class="text-gray-600 mt-2">Ottimo lavoro. Premi il pulsante per terminare e salvare la sessione.</p>
+            <button id="end-workout-btn-final" class="material-button material-button-filled !bg-green-600 mt-6 !text-lg !px-8 !py-4">Termina e Salva</button>
+        </div>
+    </div>
+
 
     <div id="app-container" class="hidden">
         <header class="bg-white/80 backdrop-blur-md sticky top-0 z-40 shadow-sm">
@@ -248,14 +281,24 @@
             </div>
 
             <div id="page-history" class="hidden">
-                <div class="flex justify-between items-center mb-4">
-                    <h2 class="text-2xl font-medium">Storico e Progressi</h2>
+                <h2 class="text-2xl font-medium mb-4">Storico e Progressi</h2>
+                
+                <div class="flex border-b mb-4">
+                    <button id="history-tab-dashboard" class="tab-button active">Dashboard</button>
+                    <button id="history-tab-list" class="tab-button">Storico Dettagliato</button>
                 </div>
-                <div class="flex flex-col md:flex-row gap-2 mb-4">
-                    <input type="text" id="search-history" placeholder="Cerca per nome esercizio o commento..." class="input-field flex-grow">
-                    <input type="date" id="search-history-date" class="input-field">
+                
+                <div id="dashboard-container">
+                    <!-- Contenuto Dashboard verrà inserito qui -->
                 </div>
-                <div id="history-list" class="space-y-6"></div>
+
+                <div id="history-list-container" class="hidden">
+                    <div class="flex flex-col md:flex-row gap-2 mb-4">
+                        <input type="text" id="search-history" placeholder="Cerca per nome esercizio o commento..." class="input-field flex-grow">
+                        <input type="date" id="search-history-date" class="input-field">
+                    </div>
+                    <div id="history-list" class="space-y-6"></div>
+                </div>
             </div>
 
             <div id="page-db" class="hidden">
@@ -279,27 +322,33 @@
                 <div id="categories-list" class="space-y-4"></div>
             </div>
         </main>
+        
+        <button id="workout-fab" title="Avvia Modalità Allenamento" class="fab fixed bottom-24 left-4 md:bottom-8 md:left-8 flex items-center justify-center z-30 transition-transform transform hover:scale-110 !bg-blue-200 !text-blue-800">
+            <span class="material-icons">directions_run</span>
+        </button>
 
         <button id="fab" class="fab fixed bottom-24 right-4 md:bottom-8 md:right-8 flex items-center justify-center z-30 transition-transform transform hover:scale-110">
             <span class="material-icons">add</span>
         </button>
         
-        <div id="modal-container" class="fixed inset-0 z-50 flex items-center justify-center modal-backdrop hidden">
-            </div>
+    </div>
 
-        <div id="confirm-modal" class="fixed inset-0 z-[60] flex items-center justify-center modal-backdrop hidden">
-            <div class="modal-content p-6">
-                <h3 id="confirm-title" class="text-xl font-medium mb-4">Conferma</h3>
-                <p id="confirm-message" class="mb-6 text-gray-600">Sei sicuro di voler procedere?</p>
-                <div class="flex justify-end gap-2">
-                    <button id="confirm-cancel" class="material-button material-button-text">Annulla</button>
-                    <button id="confirm-ok" class="material-button material-button-filled">Conferma</button>
-                </div>
+    <!-- ===== ELEMENTI SPOSTATI QUI (INIZIO) ===== -->
+    <!-- Questi elementi sono stati spostati al di fuori di #app-container -->
+    <!-- in modo che rimangano visibili anche quando #app-container è nascosto -->
+    <div id="modal-container" class="fixed inset-0 z-[90] flex items-center justify-center modal-backdrop hidden"></div>
+    <div id="confirm-modal" class="fixed inset-0 z-[95] flex items-center justify-center modal-backdrop hidden">
+        <div class="modal-content p-6">
+            <h3 id="confirm-title" class="text-xl font-medium mb-4">Conferma</h3>
+            <p id="confirm-message" class="mb-6 text-gray-600">Sei sicuro di voler procedere?</p>
+            <div class="flex justify-end gap-2">
+                <button id="confirm-cancel" class="material-button material-button-text">Annulla</button>
+                <button id="confirm-ok" class="material-button material-button-filled">Conferma</button>
             </div>
         </div>
-        
-        <div id="toast-container" class="fixed bottom-24 md:bottom-8 right-1/2 translate-x-1/2 z-[70] space-y-2"></div>
     </div>
+    <div id="toast-container" class="fixed bottom-24 md:bottom-8 right-1/2 translate-x-1/2 z-[100] space-y-2"></div>
+    <!-- ===== ELEMENTI SPOSTATI QUI (FINE) ===== -->
 
 
     <script type="module">
@@ -340,8 +389,11 @@
             sheets: [],
             sheetContainers: [],
             sheetItems: {},
+            workoutSessions: [], // Per la dashboard
             listeners: {},
-            timers: {}
+            timers: {},
+            isWorkoutModeActive: false,
+            workout: null, // { sheetId, items, currentItemIndex, startTime, globalTimerIntervalId, elapsedSeconds }
         };
         
         const ZONES = ["Braccia", "Spalle", "Dorso", "Petto", "Addome", "Glutei", "Gambe", "Cardio"];
@@ -411,7 +463,7 @@
         
         // --- FUNZIONI DI RENDERING ---
         function render() {
-            if (!state.userId) return;
+            if (!state.userId || state.isWorkoutModeActive) return; // Non renderizzare se in workout mode
             switch (state.currentPage) {
                 case 'sheets': renderSheetsPage(); break;
                 case 'history': renderHistoryPage(); break;
@@ -507,6 +559,11 @@
         }
         
         function renderHistoryPage() {
+            renderDashboard();
+            renderHistoryList();
+        }
+
+        function renderHistoryList() {
              const list = document.getElementById('history-list');
              if (!list) return;
 
@@ -598,6 +655,65 @@
             `).join('');
         }
         
+        function renderDashboard() {
+            const container = document.getElementById('dashboard-container');
+            if (!container) return;
+
+            const sessions = state.workoutSessions;
+            if (sessions.length === 0) {
+                container.innerHTML = `<p class="text-center text-gray-500">Nessun allenamento completato in modalità allenamento. Avviane uno dal tasto blu in basso a sinistra!</p>`;
+                return;
+            }
+
+            const totalWorkouts = sessions.length;
+            const totalTimeSeconds = sessions.reduce((sum, s) => sum + s.durationSeconds, 0);
+            const avgTimeSeconds = totalTimeSeconds / totalWorkouts;
+
+            const sessionsBySheet = sessions.reduce((acc, session) => {
+                if (!acc[session.sheetId]) {
+                    acc[session.sheetId] = { name: session.sheetName, times: [] };
+                }
+                acc[session.sheetId].times.push({ date: session.startTime, duration: session.durationSeconds });
+                return acc;
+            }, {});
+
+            container.innerHTML = `
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                    <div class="material-card p-4 text-center">
+                        <h4 class="text-lg font-medium">Allenamenti Totali</h4>
+                        <p class="text-3xl font-bold text-purple-600">${totalWorkouts}</p>
+                    </div>
+                    <div class="material-card p-4 text-center">
+                        <h4 class="text-lg font-medium">Durata Media</h4>
+                        <p class="text-3xl font-bold text-purple-600">${formatTime(Math.round(avgTimeSeconds))}</p>
+                    </div>
+                     <div class="material-card p-4 text-center">
+                        <h4 class="text-lg font-medium">Tempo Totale</h4>
+                        <p class="text-3xl font-bold text-purple-600">${formatTotalTime(totalTimeSeconds)}</p>
+                    </div>
+                </div>
+
+                <h3 class="text-xl font-medium mb-2">Progresso per Scheda</h3>
+                <div class="space-y-4">
+                    ${Object.keys(sessionsBySheet).length > 0 ? Object.entries(sessionsBySheet).map(([sheetId, data]) => `
+                        <div class="material-card p-4">
+                            <h4 class="font-bold text-lg">${data.name}</h4>
+                            <p class="text-sm text-gray-500 mb-2">Completata ${data.times.length} volte</p>
+                            <ul class="space-y-1 text-sm">
+                                ${data.times.sort((a,b) => b.date.seconds - a.date.seconds).slice(0, 5).map(t => `
+                                    <li class="flex justify-between p-1 rounded hover:bg-gray-50">
+                                        <span>${new Date(t.date.seconds * 1000).toLocaleDateString('it-IT', {day: '2-digit', month: 'long', year: 'numeric'})}</span>
+                                        <span class="font-medium">${formatTime(t.duration)}</span>
+                                    </li>
+                                `).join('')}
+                                ${data.times.length > 5 ? `<li class="text-center text-xs text-gray-400">...e altre ${data.times.length - 5} sessioni.</li>` : ''}
+                            </ul>
+                        </div>
+                    `).join('') : '<p class="text-gray-500">Nessuna scheda ripetuta.</p>'}
+                </div>
+            `;
+        }
+
         function renderSheetsPage() {
             const list = document.getElementById('sheets-list');
             if (!list) return;
@@ -621,7 +737,7 @@
             });
 
             const sheetsByContainer = filteredSheets.reduce((acc, sheet) => {
-                const containerId = sheet.containerId || 'unassigned';
+                const containerId = sheet.containerId || null; // Use null for consistency
                 if (!acc[containerId]) acc[containerId] = [];
                 acc[containerId].push(sheet);
                 return acc;
@@ -664,7 +780,7 @@
                 `;
             }).join('');
 
-            const unassignedSheets = sheetsByContainer['unassigned'] || [];
+            const unassignedSheets = sheetsByContainer[null] || [];
             if (unassignedSheets.length > 0) {
                  html += `
                     <div class="mt-6">
@@ -742,20 +858,23 @@
                 <span class="text-xs font-medium px-2 py-1 rounded-full" style="background-color:${item.label.color || '#cccccc'}; color: #fff;">${item.label.text}</span>
             ` : '';
 
+            const isWorkout = state.isWorkoutModeActive;
+
             return `
                 <div class="material-card p-3 flex flex-col gap-3 sheet-item ${item.isDeactivated ? 'deactivated' : ''} ${item.isDone ? 'done' : ''}">
                     <div class="flex items-start justify-between">
                         <div class="flex items-center gap-3 flex-grow">
-                            <input type="checkbox" ${item.isDone ? 'checked' : ''} onchange="window.app.toggleSheetItemDone('${sheetId}', '${item.id}', this.checked)" class="w-5 h-5 mt-1 flex-shrink-0">
+                             ${!isWorkout ? `<input type="checkbox" ${item.isDone ? 'checked' : ''} onchange="window.app.toggleSheetItemDone('${sheetId}', '${item.id}', this.checked)" class="w-5 h-5 mt-1 flex-shrink-0">` : '<span class="material-icons text-purple-600 mt-1">fitness_center</span>'}
                             <div>
                                 <span class="font-bold text-lg cursor-pointer hover:underline" onclick="window.app.openExerciseModal('${exercise.id}')">${exercise.name}</span>
                                 ${labelHtml ? `<div class="mt-1">${labelHtml}</div>` : ''}
                             </div>
                         </div>
+                         ${!isWorkout ? `
                         <div class="flex items-center flex-shrink-0">
                            ${renderReorderButtons(sheetId, item.id, index, totalItems)}
                            <button onclick="window.app.openSheetItemActions('${sheetId}', '${item.id}')" class="material-button-text p-2 rounded-full"><span class="material-icons text-lg">more_vert</span></button>
-                        </div>
+                        </div>` : ''}
                     </div>
                     <div class="pl-9 space-y-2">
                         <label class="font-medium text-sm">Ultima performance:</label>
@@ -775,6 +894,7 @@
              const timerId = `timer-${item.id}`;
              const remaining = state.timers[timerId]?.remaining ?? item.duration;
              const isRunning = state.timers[timerId]?.intervalId;
+             const isWorkout = state.isWorkoutModeActive;
             return `
                 <div class="material-card p-3 flex items-center justify-between sheet-item ${item.isDeactivated ? 'deactivated' : ''}">
                      <div class="flex items-center gap-3">
@@ -786,24 +906,28 @@
                             <span class="material-icons text-lg">${isRunning ? 'pause' : 'play_arrow'}</span>
                         </button>
                         <button onclick="window.app.resetTimer('${item.id}', ${item.duration})" class="material-button-text p-2 rounded-full"><span class="material-icons text-lg">replay</span></button>
-                        ${renderReorderButtons(sheetId, item.id, index, totalItems)}
-                        <button onclick="window.app.openSheetItemActions('${sheetId}', '${item.id}')" class="material-button-text p-2 rounded-full"><span class="material-icons text-lg">more_vert</span></button>
+                        ${!isWorkout ? `
+                            ${renderReorderButtons(sheetId, item.id, index, totalItems)}
+                            <button onclick="window.app.openSheetItemActions('${sheetId}', '${item.id}')" class="material-button-text p-2 rounded-full"><span class="material-icons text-lg">more_vert</span></button>
+                        `: ''}
                     </div>
                 </div>
             `;
         }
 
         function renderTextItem(item, sheetId, index, totalItems) {
+            const isWorkout = state.isWorkoutModeActive;
             return `
                  <div class="material-card p-3 flex items-center justify-between sheet-item ${item.isDeactivated ? 'deactivated' : ''}">
                      <div class="flex items-center gap-3">
                         <span class="material-icons text-gray-500">notes</span>
                         <p>${item.text}</p>
                     </div>
+                    ${!isWorkout ? `
                     <div class="flex items-center">
                          ${renderReorderButtons(sheetId, item.id, index, totalItems)}
                         <button onclick="window.app.openSheetItemActions('${sheetId}', '${item.id}')" class="material-button-text p-2 rounded-full"><span class="material-icons text-lg">more_vert</span></button>
-                    </div>
+                    </div>` : ''}
                 </div>
             `;
         }
@@ -842,7 +966,8 @@
             }
         }
 
-        function showConfirm(title, message, onConfirm) {
+        // CORREZIONE: Aggiunto onCancel come parametro
+        function showConfirm(title, message, onConfirm, onCancel = () => {}) {
             document.getElementById('confirm-title').innerText = title;
             document.getElementById('confirm-message').innerHTML = message;
             const confirmModal = document.getElementById('confirm-modal');
@@ -850,7 +975,7 @@
             const cancelButton = document.getElementById('confirm-cancel');
             
             okButton.className = 'material-button material-button-filled';
-            if (title.toLowerCase().includes('logout') || title.toLowerCase().includes('eliminazione')) {
+            if (title.toLowerCase().includes('logout') || title.toLowerCase().includes('eliminazione') || title.toLowerCase().includes('termina')) {
                  okButton.classList.add('bg-red-600', 'hover:bg-red-700');
             } else {
                  okButton.classList.remove('bg-red-600', 'hover:bg-red-700');
@@ -861,17 +986,26 @@
 
             const close = () => {
                 confirmModal.classList.add('hidden');
-                document.body.classList.remove('overflow-hidden');
+                // Non rimuovere overflow-hidden se si è in workout mode e un altro modale è ancora aperto
+                if(!state.isWorkoutModeActive || modalContainer.classList.contains('hidden')) {
+                     document.body.classList.remove('overflow-hidden');
+                }
             }
             
+            // Sostituisci i listener per evitare accumuli
             const newOkButton = okButton.cloneNode(true);
             okButton.parentNode.replaceChild(newOkButton, okButton);
+            const newCancelButton = cancelButton.cloneNode(true);
+            cancelButton.parentNode.replaceChild(newCancelButton, cancelButton);
 
             newOkButton.onclick = () => {
                 onConfirm();
                 close();
             };
-            cancelButton.onclick = close;
+            newCancelButton.onclick = () => {
+                onCancel();
+                close();
+            };
         }
         
         function showToast(message, type = 'success') {
@@ -896,6 +1030,20 @@
             const min = Math.floor(seconds / 60);
             const sec = seconds % 60;
             return `${String(min).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
+        }
+        
+        function formatGlobalTime(seconds) {
+            const h = Math.floor(seconds / 3600);
+            const m = Math.floor((seconds % 3600) / 60);
+            const s = seconds % 60;
+            return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+        }
+
+        function formatTotalTime(seconds) {
+            const h = Math.floor(seconds / 3600);
+            const m = Math.floor((seconds % 3600) / 60);
+            if (h > 0) return `${h}h ${m}m`;
+            return `${m}m`;
         }
         
         const EXPANSION_STATE_KEY = 'workoutTrackerExpansionState';
@@ -950,7 +1098,7 @@
         function closeModal() {
             modalContainer.classList.add('hidden');
             modalContainer.innerHTML = '';
-            document.body.classList.remove('overflow-hidden');
+            if(!state.isWorkoutModeActive) document.body.classList.remove('overflow-hidden');
         }
 
         function openCategoryModal(id = null) {
@@ -1126,7 +1274,6 @@
             const exercise = state.exercises.find(e => e.id === exerciseIdToUse);
             if (!exercise) return showToast("Esercizio non trovato.", 'error');
             
-            // Trova l'ultimo storico per pre-compilare i campi se si sta aggiungendo una nuova voce
             const latestHistoryItem = historyId ? null : state.history
                 .filter(h => h.exerciseId === exerciseIdToUse && h.params)
                 .sort((a, b) => b.timestamp.seconds - a.timestamp.seconds)[0];
@@ -1144,7 +1291,6 @@
                         <div id="params-container" class="space-y-4">
                              ${(exercise.parameters && exercise.parameters.length > 0) ? exercise.parameters.map(paramName => {
                                  let sets = [];
-                                 // Carica i valori dello storico da modificare, o dell'ultimo storico se è una nuova voce
                                  const valuesToLoad = historyItem?.params?.[paramName]?.value || latestHistoryItem?.params?.[paramName]?.value;
                                  try { 
                                      sets = JSON.parse(valuesToLoad || '[{}]'); 
@@ -1442,11 +1588,6 @@
         }
 
         async function callGeminiAPI(prompt, isJson = false) {
-            // ====================================================================================
-            // IMPORTANTE: Sostituisci la stringa vuota con la tua chiave API di Google AI Studio
-            // per far funzionare l'applicazione al di fuori di questo ambiente di sviluppo.
-            // Puoi ottenere una chiave da https://aistudio.google.com/
-            // ====================================================================================
             const apiKey = "AIzaSyDQsDl_3T9b9ludO4DCiRvifzPYvNVM9t8"; 
 
             if (apiKey === "INSERISCI_QUI_LA_TUA_CHIAVE_API") {
@@ -1455,7 +1596,7 @@
                  return null;
             }
             
-            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`;
 
             const payload = { contents: [{ parts: [{ text: prompt }] }] };
             if (isJson) {
@@ -2318,7 +2459,11 @@
                     }
                 }, 1000);
             }
-             render();
+             if(!state.isWorkoutModeActive) render();
+             else {
+                 const playPauseButton = document.querySelector(`#workout-item-content button[onclick*="toggleTimer"] span`);
+                 if(playPauseButton) playPauseButton.textContent = state.timers[timerId]?.intervalId ? 'pause' : 'play_arrow';
+             }
         }
 
         function resetTimer(itemId, duration) {
@@ -2332,7 +2477,191 @@
                 timerEl.innerText = formatTime(duration);
                 timerEl.classList.remove('blinking');
             }
+            if(!state.isWorkoutModeActive) render();
+            else {
+                 const playPauseButton = document.querySelector(`#workout-item-content button[onclick*="toggleTimer"] span`);
+                 if(playPauseButton) playPauseButton.textContent = 'play_arrow';
+            }
+        }
+        
+        // --- LOGICA MODALITÀ ALLENAMENTO ---
+        
+        function openWorkoutSelectionModal() {
+            const hasUnassigned = state.sheets.some(s => !s.containerId);
+            modalContainer.innerHTML = `
+                <div class="modal-content p-6">
+                    <h3 class="text-xl font-medium mb-4">Scegli un Contenitore</h3>
+                     <div class="space-y-2 max-h-80 overflow-y-auto">
+                        ${state.sheetContainers.map(c => `
+                            <div onclick="window.app.renderWorkoutSheetSelection('${c.id}')" class="p-4 rounded-lg hover:bg-gray-100 cursor-pointer border" style="border-left: 4px solid ${c.color || '#6750A4'}">
+                                ${c.name}
+                            </div>
+                        `).join('')}
+                        ${hasUnassigned ? `
+                            <div onclick="window.app.renderWorkoutSheetSelection(null)" class="p-4 rounded-lg hover:bg-gray-100 cursor-pointer border">
+                                Schede non assegnate
+                            </div>
+                        ` : ''}
+                    </div>
+                    <div class="flex justify-end gap-2 mt-6">
+                        <button onclick="window.app.closeModal()" class="material-button material-button-text">Annulla</button>
+                    </div>
+                </div>`;
+            
+            modalContainer.classList.remove('hidden');
+            document.body.classList.add('overflow-hidden');
+        }
+
+        // CORREZIONE: Funzione resa globale per essere chiamata dall'HTML generato
+        function renderWorkoutSheetSelection(containerId) {
+            const sheets = state.sheets.filter(s => s.containerId === containerId);
+            const content = document.querySelector('#modal-container .modal-content');
+            if(!content) return;
+            content.innerHTML = `
+                <h3 class="text-xl font-medium mb-4">Scegli una Scheda</h3>
+                <div class="space-y-2 max-h-80 overflow-y-auto">
+                    ${sheets.length > 0 ? sheets.map(s => `
+                        <div onclick="window.app.startWorkout('${s.id}')" class="p-4 rounded-lg hover:bg-gray-100 cursor-pointer border">
+                            <p class="font-medium">${s.name}</p>
+                            <p class="text-sm text-gray-500">${s.description || ''}</p>
+                        </div>
+                    `).join('') : '<p class="text-gray-500 text-center">Nessuna scheda in questo contenitore.</p>'}
+                </div>
+                <div class="flex justify-end gap-2 mt-6">
+                    <button onclick="window.app.openWorkoutSelectionModal()" class="material-button material-button-text">Indietro</button>
+                </div>
+            `;
+        }
+
+        function startWorkout(sheetId) {
+            closeModal();
+            const sheet = state.sheets.find(s => s.id === sheetId);
+            if (!sheet) return showToast("Scheda non trovata", 'error');
+
+            const items = (state.sheetItems[sheetId] || [])
+                .filter(item => !item.isDeactivated)
+                .sort((a,b) => a.order - b.order);
+
+            if (items.length === 0) return showToast("Questa scheda è vuota!", 'error');
+
+            state.isWorkoutModeActive = true;
+            state.workout = {
+                sheetId: sheetId,
+                sheetName: sheet.name,
+                items: items,
+                currentItemIndex: 0,
+                startTime: new Date(),
+                globalTimerIntervalId: null,
+                elapsedSeconds: 0,
+            };
+            
+            document.getElementById('app-container').classList.add('hidden');
+            document.getElementById('workout-mode-container').classList.remove('hidden');
+            document.body.classList.add('overflow-hidden');
+
+            startGlobalTimer();
+            renderWorkoutStep();
+        }
+
+        function renderWorkoutStep() {
+            if (!state.workout) return;
+
+            const { items, currentItemIndex, sheetName } = state.workout;
+            const item = items[currentItemIndex];
+            
+            document.getElementById('workout-sheet-name').textContent = sheetName;
+            document.getElementById('workout-step-counter').textContent = `Passaggio ${currentItemIndex + 1} / ${items.length}`;
+
+            const contentDiv = document.getElementById('workout-item-content');
+            
+            let html = '';
+            switch (item.type) {
+                case 'exercise': html = renderExerciseItem(item, state.workout.sheetId, currentItemIndex, items.length); break;
+                case 'pause': html = renderPauseItem(item, state.workout.sheetId, currentItemIndex, items.length); break;
+                case 'text': html = renderTextItem(item, state.workout.sheetId, currentItemIndex, items.length); break;
+            }
+            contentDiv.innerHTML = html;
+            
+            document.getElementById('workout-prev-btn').disabled = currentItemIndex === 0;
+            const isLastStep = currentItemIndex >= items.length - 1;
+            document.getElementById('workout-navigation').classList.toggle('hidden', isLastStep);
+            document.getElementById('workout-finish-view').classList.toggle('hidden', !isLastStep);
+        }
+        
+        function workoutNextStep() {
+            if (!state.workout || state.workout.currentItemIndex >= state.workout.items.length - 1) return;
+            state.workout.currentItemIndex++;
+            renderWorkoutStep();
+        }
+        
+        function workoutPrevStep() {
+             if (!state.workout || state.workout.currentItemIndex <= 0) return;
+            state.workout.currentItemIndex--;
+            renderWorkoutStep();
+        }
+
+        // CORREZIONE: Logica di conferma a cascata
+        function endWorkout() {
+             showConfirm('Termina Allenamento', 'Sei sicuro di voler terminare l\'allenamento?', () => {
+                stopGlobalTimer();
+                const workoutData = { ...state.workout, endTime: new Date() };
+                
+                // Secondo showConfirm per salvare
+                showConfirm('Salva Sessione', `Allenamento completato in ${formatGlobalTime(workoutData.elapsedSeconds)}. Vuoi salvare la sessione nello storico?`,
+                    () => saveWorkoutSession(workoutData), // onConfirm: salva
+                    () => exitWorkoutMode() // onCancel: esci senza salvare
+                );
+             });
+        }
+        
+        async function saveWorkoutSession(workoutData) {
+            const { userId } = state;
+            const dataToSave = {
+                sheetId: workoutData.sheetId,
+                sheetName: workoutData.sheetName,
+                startTime: Timestamp.fromDate(workoutData.startTime),
+                endTime: Timestamp.fromDate(workoutData.endTime),
+                durationSeconds: workoutData.elapsedSeconds,
+            };
+
+            try {
+                await addDoc(collection(db, `/users/${userId}/workoutSessions`), dataToSave);
+                showToast("Sessione salvata con successo!", "success");
+            } catch(e) {
+                console.error("Errore salvataggio sessione:", e);
+                showToast("Errore durante il salvataggio della sessione.", "error");
+            } finally {
+                exitWorkoutMode();
+            }
+        }
+        
+        function exitWorkoutMode() {
+            stopGlobalTimer();
+            stopAllTimers();
+            state.isWorkoutModeActive = false;
+            state.workout = null;
+
+            document.getElementById('app-container').classList.remove('hidden');
+            document.getElementById('workout-mode-container').classList.add('hidden');
+            document.body.classList.remove('overflow-hidden');
             render();
+        }
+
+        function startGlobalTimer() {
+            if (state.workout?.globalTimerIntervalId) clearInterval(state.workout.globalTimerIntervalId);
+            state.workout.elapsedSeconds = 0; // Resetta il timer all'inizio
+            document.getElementById('workout-global-timer').textContent = formatGlobalTime(0);
+            state.workout.globalTimerIntervalId = setInterval(() => {
+                state.workout.elapsedSeconds++;
+                document.getElementById('workout-global-timer').textContent = formatGlobalTime(state.workout.elapsedSeconds);
+            }, 1000);
+        }
+
+        function stopGlobalTimer() {
+             if (state.workout?.globalTimerIntervalId) {
+                clearInterval(state.workout.globalTimerIntervalId);
+                state.workout.globalTimerIntervalId = null;
+            }
         }
 
         // --- SETUP INIZIALE ---
@@ -2366,7 +2695,8 @@
             openSheetModal, deleteSheet, addItemsToSheet, resetSheetDoneStatus,
             toggleSheetItemDone, reorderSheetItem, openSheetItemActions,
             deleteSheetItem, toggleTimer, resetTimer, openContainerModal, deleteContainer,
-            toggleExpansion, reorderEntity
+            toggleExpansion, reorderEntity,
+            openWorkoutSelectionModal, renderWorkoutSheetSelection, startWorkout,
         };
         
         function startApp() {
@@ -2379,19 +2709,40 @@
             
             document.getElementById('search-exercises').addEventListener('input', renderDbPage);
             document.getElementById('sort-exercises').addEventListener('change', renderDbPage);
-            document.getElementById('search-history').addEventListener('input', renderHistoryPage);
-            document.getElementById('search-history-date').addEventListener('change', renderHistoryPage);
+            document.getElementById('search-history').addEventListener('input', renderHistoryList);
+            document.getElementById('search-history-date').addEventListener('change', renderHistoryList);
             document.getElementById('search-sheets').addEventListener('input', renderSheetsPage);
             document.getElementById('add-category-btn').onclick = () => openCategoryModal();
             document.getElementById('add-container-btn').onclick = () => openContainerModal();
             document.getElementById('ai-generator-btn').onclick = () => openAiGeneratorModal();
+
+            document.getElementById('workout-fab').onclick = openWorkoutSelectionModal;
+            document.getElementById('workout-next-btn').onclick = workoutNextStep;
+            document.getElementById('workout-prev-btn').onclick = workoutPrevStep;
+            document.getElementById('end-workout-btn-header').onclick = endWorkout;
+            document.getElementById('end-workout-btn-final').onclick = endWorkout;
             
+            document.getElementById('history-tab-dashboard').onclick = () => {
+                document.getElementById('history-tab-dashboard').classList.add('active');
+                document.getElementById('history-tab-list').classList.remove('active');
+                document.getElementById('dashboard-container').classList.remove('hidden');
+                document.getElementById('history-list-container').classList.add('hidden');
+            };
+             document.getElementById('history-tab-list').onclick = () => {
+                document.getElementById('history-tab-list').classList.add('active');
+                document.getElementById('history-tab-dashboard').classList.remove('active');
+                document.getElementById('history-list-container').classList.remove('hidden');
+                document.getElementById('dashboard-container').classList.add('hidden');
+            };
+
             const basePath = `/users/${userId}`;
 
             onSnapshot(query(collection(db, `${basePath}/categories`), orderBy("name")), s => { state.categories = s.docs.map(d=>({id:d.id,...d.data()})); render(); }, e => console.error("categories listener error:", e));
             onSnapshot(query(collection(db, `${basePath}/exercises`)), s => { state.exercises = s.docs.map(d=>({id:d.id,...d.data()})); render(); }, e => console.error("exercises listener error:", e));
             onSnapshot(query(collection(db, `${basePath}/exerciseHistory`), orderBy("timestamp", "desc")), s => { state.history = s.docs.map(d=>({id:d.id,...d.data()})); render(); }, e => console.error("exerciseHistory listener error:", e));
             onSnapshot(query(collection(db, `${basePath}/sheetContainers`), orderBy("order")), s => { state.sheetContainers = s.docs.map(d=>({id:d.id,...d.data()})); render(); }, e => console.error("sheetContainers listener error:", e));
+            onSnapshot(query(collection(db, `${basePath}/workoutSessions`), orderBy("startTime", "desc")), s => { state.workoutSessions = s.docs.map(d=>({id:d.id,...d.data()})); render(); }, e => console.error("workoutSessions listener error:", e));
+            
             onSnapshot(query(collection(db, `${basePath}/workoutSheets`), orderBy("order")), s => {
                 const newSheets = s.docs.map(d=>({id:d.id,...d.data()}));
                 const newSheetIds = newSheets.map(sh => sh.id);
@@ -2493,4 +2844,3 @@
     </script>
 </body>
 </html>
-
