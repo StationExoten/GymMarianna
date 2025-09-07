@@ -119,6 +119,45 @@
         .sheet-item.done {
             background-color: #e8f5e9; /* Light green */
         }
+        .variant-carousel-container {
+            position: relative;
+            overflow: hidden;
+        }
+        .variant-carousel-track {
+            display: flex;
+            transition: transform 0.3s ease-in-out;
+        }
+        .variant-slide {
+            width: 100%;
+            flex-shrink: 0;
+        }
+        .variant-nav-button {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            background-color: rgba(255, 255, 255, 0.7);
+            border-radius: 50%;
+            z-index: 10;
+        }
+        .variant-dots {
+            display: flex;
+            justify-content: center;
+            gap: 6px;
+            margin-top: 8px;
+        }
+        .variant-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background-color: #ccc;
+            transition: background-color 0.3s;
+        }
+        .variant-dot.active {
+            background-color: #6750A4;
+        }
+        .sheet-items-list > .sheet-item:not(:first-child) {
+            border-top: 1px solid #e0e0e0;
+        }
 
 
         /* Scrollbar styles */
@@ -261,9 +300,7 @@
             </div>
         </nav>
 
-        <!-- ===== INIZIO MODIFICA ===== -->
         <main class="container mx-auto p-4 pb-40 md:pb-24">
-        <!-- ===== FINE MODIFICA ===== -->
             <div id="page-sheets" class="hidden">
                 <div class="flex justify-between items-center mb-4 flex-wrap gap-2">
                     <h2 class="text-2xl font-medium">Schede Allenamento</h2>
@@ -343,7 +380,7 @@
         <div class="modal-content p-6">
             <h3 id="confirm-title" class="text-xl font-medium mb-4">Conferma</h3>
             <p id="confirm-message" class="mb-6 text-gray-600">Sei sicuro di voler procedere?</p>
-            <div class="flex justify-end gap-2">
+            <div id="confirm-buttons" class="flex justify-end gap-2">
                 <button id="confirm-cancel" class="material-button material-button-text">Annulla</button>
                 <button id="confirm-ok" class="material-button material-button-filled">Conferma</button>
             </div>
@@ -752,11 +789,15 @@
                 }
                 const items = state.sheetItems[sheet.id] || [];
                 return items.some(item => {
-                    if (item.type !== 'exercise') return false;
-                    const exercise = state.exercises.find(ex => ex.id === item.exerciseId);
-                    if (!exercise) return false;
-                    const category = state.categories.find(c => c.id === exercise.categoryId);
-                    return exercise.name.toLowerCase().includes(searchTerm) || (category && category.name.toLowerCase().includes(searchTerm));
+                    const exerciseIds = item.exerciseIds || (item.exerciseId ? [item.exerciseId] : []);
+                    if (item.type !== 'exercise' || exerciseIds.length === 0) return false;
+                    
+                    return exerciseIds.some(exId => {
+                        const exercise = state.exercises.find(ex => ex.id === exId);
+                        if (!exercise) return false;
+                        const category = state.categories.find(c => c.id === exercise.categoryId);
+                        return exercise.name.toLowerCase().includes(searchTerm) || (category && category.name.toLowerCase().includes(searchTerm));
+                    });
                 });
             });
 
@@ -847,7 +888,7 @@
                                     <button onclick="window.app.resetSheetDoneStatus('${sheet.id}')" class="material-button-text p-2 rounded-full" title="Segna tutti come 'da fare'"><span class="material-icons text-lg">refresh</span></button>
                                 </div>
                             </div>
-                            <div id="sheet-items-${sheet.id}" class="space-y-2">
+                            <div id="sheet-items-${sheet.id}" class="sheet-items-list">
                                 ${renderSheetItems(sheet.id)}
                             </div>
                         </div>
@@ -871,49 +912,97 @@
         }
 
         function renderExerciseItem(item, sheetId, index, totalItems) {
-            const exercise = state.exercises.find(e => e.id === item.exerciseId);
-            if (!exercise) return `<div class="p-2 border rounded bg-red-100 text-red-700">Esercizio non trovato (ID: ${item.exerciseId}) <button onclick="window.app.deleteSheetItem('${sheetId}', '${item.id}')" class="text-red-700 underline ml-2">Rimuovi</button></div>`;
-
-            const latestHistory = state.history
-                .filter(h => h.exerciseId === item.exerciseId && h.params)
-                .sort((a,b) => b.timestamp.seconds - a.timestamp.seconds)[0];
+            const exerciseIds = item.exerciseIds || (item.exerciseId ? [item.exerciseId] : []);
+            if (exerciseIds.length === 0) return `<div class="p-2 border rounded bg-red-100 text-red-700">Esercizio non trovato (ID: ${item.exerciseId}) <button onclick="window.app.deleteSheetItem('${sheetId}', '${item.id}')" class="text-red-700 underline ml-2">Rimuovi</button></div>`;
             
-            const labelHtml = item.label && item.label.text ? `
-                <span class="text-xs font-medium px-2 py-1 rounded-full" style="background-color:${item.label.color || '#cccccc'}; color: #fff;">${item.label.text}</span>
-            ` : '';
-
             const isWorkout = state.isWorkoutModeActive;
 
             return `
-                <div class="material-card p-3 flex flex-col gap-3 sheet-item ${item.isDeactivated ? 'deactivated' : ''} ${item.isDone ? 'done' : ''}">
-                    <div class="flex items-start justify-between">
-                        <div class="flex items-center gap-3 flex-grow">
-                             ${!isWorkout ? `<input type="checkbox" ${item.isDone ? 'checked' : ''} onchange="window.app.toggleSheetItemDone('${sheetId}', '${item.id}', this.checked)" class="w-5 h-5 mt-1 flex-shrink-0">` : '<span class="material-icons text-purple-600 mt-1">fitness_center</span>'}
-                            <div>
-                                <span class="font-bold text-lg cursor-pointer hover:underline" onclick="window.app.openExerciseModal('${exercise.id}')">${exercise.name}</span>
-                                ${labelHtml ? `<div class="mt-1">${labelHtml}</div>` : ''}
+                <div class="material-card p-3 flex flex-col sheet-item ${item.isDeactivated ? 'deactivated' : ''} ${item.isDone ? 'done' : ''}">
+                     <div class="flex flex-col">
+                        <div class="flex justify-between items-center h-8 mb-1">
+                            ${!isWorkout ? `<div class="w-8"><input type="checkbox" ${item.isDone ? 'checked' : ''} onchange="window.app.toggleSheetItemDone('${sheetId}', '${item.id}', this.checked)" class="w-5 h-5 flex-shrink-0"></div>` : '<div></div>'}
+                            ${!isWorkout ? `
+                                <div class="flex items-center">
+                                    ${renderReorderButtons(sheetId, item.id, index, totalItems)}
+                                    <button onclick="window.app.openSheetItemActions('${sheetId}', '${item.id}')" class="material-button-text p-2 rounded-full"><span class="material-icons text-lg">more_vert</span></button>
+                                </div>` 
+                            : ''}
+                        </div>
+                        <div class="flex items-start gap-3">
+                            ${isWorkout ? '<span class="material-icons text-purple-600 mt-1">fitness_center</span>' : ''}
+                            <div class="w-full flex-grow">
+                                ${renderVariantCarousel(sheetId, item.id, item, isWorkout)}
                             </div>
                         </div>
-                         ${!isWorkout ? `
-                        <div class="flex items-center flex-shrink-0">
-                           ${renderReorderButtons(sheetId, item.id, index, totalItems)}
-                           <button onclick="window.app.openSheetItemActions('${sheetId}', '${item.id}')" class="material-button-text p-2 rounded-full"><span class="material-icons text-lg">more_vert</span></button>
-                        </div>` : ''}
-                    </div>
-                    <div class="pl-9 space-y-2">
-                        <label class="font-medium text-sm">Ultima performance:</label>
-                        <div class="text-sm p-2 bg-gray-100 rounded space-y-1">
-                            ${(exercise.parameters && exercise.parameters.length > 0) ? exercise.parameters.map(paramName => {
-                                const lastValue = latestHistory?.params?.[paramName]?.value;
-                                return `<div><strong>${paramName}:</strong> ${renderCompoundParam(lastValue) || 'N/D'}</div>`;
-                            }).join('') : '<span>N/D</span>'}
-                        </div>
-                        <button onclick="window.app.openAddHistoryModal('${exercise.id}')" class="material-button-outlined text-xs px-3 py-1 mt-2">Aggiorna Parametri / Diario</button>
                     </div>
                 </div>
             `;
         }
         
+        function renderVariantCarousel(sheetId, itemId, item, isWorkout) {
+            const exerciseIds = item.exerciseIds || (item.exerciseId ? [item.exerciseId] : []);
+            const labels = item.labels || {};
+            const carouselId = `carousel-${itemId}`;
+
+            return `
+            <div class="relative">
+                <div class="variant-carousel-container" id="${carouselId}" data-current-index="0">
+                    <div class="variant-carousel-track">
+                        ${exerciseIds.map((exId, index) => {
+                            const exercise = state.exercises.find(e => e.id === exId);
+                            if (!exercise) return '';
+                            const latestHistory = state.history
+                                .filter(h => h.exerciseId === exId && h.params)
+                                .sort((a,b) => b.timestamp.seconds - a.timestamp.seconds)[0];
+                            const labelList = Array.isArray(labels[exId]) ? labels[exId] : [];
+                            const labelHtml = labelList.map(label => 
+                                `<span class="text-xs font-medium px-2 py-1 rounded-full mr-1" style="background-color:${label.color || '#cccccc'}; color: #fff;">${label.text}</span>`
+                            ).join('');
+
+                            return `
+                                <div class="variant-slide p-1">
+                                    <div class="flex justify-between items-start">
+                                        <div>
+                                            <span class="font-bold text-lg cursor-pointer hover:underline" onclick="window.app.openExerciseModal('${exercise.id}')">${exercise.name}</span>
+                                            ${labelHtml ? `<div class="mt-1 flex flex-wrap gap-1">${labelHtml}</div>` : ''}
+                                        </div>
+                                        ${!isWorkout && exerciseIds.length > 1 && index > 0 ? `
+                                            <button onclick="window.app.removeVariantFromSheetItem('${sheetId}', '${itemId}', '${exId}')" title="Rimuovi questa alternativa" class="material-button-text !p-1 !min-w-0 h-6 rounded-full text-gray-400 hover:text-red-600">
+                                                <span class="material-icons text-base">remove_circle_outline</span>
+                                            </button>
+                                        ` : ''}
+                                    </div>
+                                    <div class="mt-2 space-y-2 w-full">
+                                        <label class="font-medium text-sm">Ultima performance:</label>
+                                        <div class="text-sm p-2 bg-gray-100 rounded space-y-1">
+                                            ${(exercise.parameters && exercise.parameters.length > 0) ? exercise.parameters.map(paramName => {
+                                                const lastValue = latestHistory?.params?.[paramName]?.value;
+                                                return `<div><strong>${paramName}:</strong> ${renderCompoundParam(lastValue) || 'N/D'}</div>`;
+                                            }).join('') : '<span>N/D</span>'}
+                                        </div>
+                                        <button onclick="window.app.openAddHistoryModal('${exercise.id}')" class="material-button-outlined text-xs px-3 py-1 mt-2">Aggiorna Parametri / Diario</button>
+                                    </div>
+                                </div>`;
+                        }).join('')}
+                    </div>
+                </div>
+
+                ${exerciseIds.length > 1 ? `
+                    <button onclick="window.app.navigateCarousel('${carouselId}', -1)" class="variant-nav-button left-0 ml-[-16px] material-button-text !p-2 !min-w-0 h-8 w-8"><span class="material-icons text-xl">chevron_left</span></button>
+                    <button onclick="window.app.navigateCarousel('${carouselId}', 1)" class="variant-nav-button right-0 mr-[-16px] material-button-text !p-2 !min-w-0 h-8 w-8"><span class="material-icons text-xl">chevron_right</span></button>
+                ` : ''}
+            </div>
+
+            <div class="flex items-center justify-between mt-2 w-full">
+                <div class="variant-dots flex-grow justify-center">
+                    ${exerciseIds.map((_, index) => `<div class="variant-dot ${index === 0 ? 'active' : ''}" data-index="${index}"></div>`).join('')}
+                </div>
+                <button onclick="window.app.openAddVariantModal('${sheetId}', '${itemId}', '${exerciseIds[0]}')" class="material-button-outlined text-xs px-2 py-1">+ Alternativa</button>
+            </div>
+            `;
+        }
+
         function renderPauseItem(item, sheetId, index, totalItems) {
              const timerId = `timer-${item.id}`;
              const remaining = state.timers[timerId]?.remaining ?? item.duration;
@@ -991,17 +1080,21 @@
         }
 
         function showConfirm(title, message, onConfirm, onCancel = () => {}) {
-            document.getElementById('confirm-title').innerText = title;
+             document.getElementById('confirm-title').innerText = title;
             document.getElementById('confirm-message').innerHTML = message;
             const confirmModal = document.getElementById('confirm-modal');
+            const buttonContainer = document.getElementById('confirm-buttons');
+            
+            buttonContainer.innerHTML = `
+                <button id="confirm-cancel" class="material-button material-button-text">Annulla</button>
+                <button id="confirm-ok" class="material-button material-button-filled">Conferma</button>
+            `;
+
             const okButton = document.getElementById('confirm-ok');
             const cancelButton = document.getElementById('confirm-cancel');
-            
-            okButton.className = 'material-button material-button-filled';
+
             if (title.toLowerCase().includes('logout') || title.toLowerCase().includes('eliminazione') || title.toLowerCase().includes('termina')) {
                  okButton.classList.add('bg-red-600', 'hover:bg-red-700');
-            } else {
-                 okButton.classList.remove('bg-red-600', 'hover:bg-red-700');
             }
 
             confirmModal.classList.remove('hidden');
@@ -1014,16 +1107,11 @@
                 }
             }
             
-            const newOkButton = okButton.cloneNode(true);
-            okButton.parentNode.replaceChild(newOkButton, okButton);
-            const newCancelButton = cancelButton.cloneNode(true);
-            cancelButton.parentNode.replaceChild(newCancelButton, cancelButton);
-
-            newOkButton.onclick = async () => {
+            okButton.onclick = async () => {
                 await onConfirm();
                 close();
             };
-            newCancelButton.onclick = () => {
+            cancelButton.onclick = () => {
                 onCancel();
                 close();
             };
@@ -1485,7 +1573,7 @@
                 let itemsToAdd = [];
                 if (activeTab === 'add-item-type-exercise') {
                     selectionOrder.forEach(exerciseId => {
-                        itemsToAdd.push({ type: 'exercise', exerciseId });
+                        itemsToAdd.push({ type: 'exercise', exerciseIds: [exerciseId] });
                     });
                 } else if (activeTab === 'add-item-type-pause') {
                      const minutes = parseInt(document.getElementById('pause-minutes').value) || 0;
@@ -1800,15 +1888,17 @@
                         }
 
                         const itemData = {
-                            ...item,
                             order: itemOrder++,
                             isDone: false,
                             isDeactivated: false,
                             createdAt: serverTimestamp()
                         };
+                        
                         if (item.type === 'exercise') {
-                            itemData.exerciseId = exercise.id;
-                            delete itemData.exerciseName;
+                            itemData.type = 'exercise';
+                            itemData.exerciseIds = [exercise.id]; // Inizializza con l'array
+                        } else {
+                            Object.assign(itemData, item);
                         }
                         
                         const itemRef = doc(collection(db, sheetRef.path, 'items'));
@@ -1949,9 +2039,17 @@
                     historySnapshot.forEach(d => batch.delete(d.ref));
                     
                     for (const sheet of state.sheets) {
-                        const itemsQuery = query(collection(db, `${basePath}/workoutSheets/${sheet.id}/items`), where('exerciseId', '==', id));
+                        const itemsQuery = query(collection(db, `${basePath}/workoutSheets/${sheet.id}/items`), where('exerciseIds', 'array-contains', id));
                         const itemsSnapshot = await getDocs(itemsQuery);
-                        itemsSnapshot.forEach(d => batch.delete(d.ref));
+                        itemsSnapshot.forEach(d => {
+                            const itemData = d.data();
+                            const newExerciseIds = itemData.exerciseIds.filter(exId => exId !== id);
+                            if(newExerciseIds.length > 0) {
+                                batch.update(d.ref, { exerciseIds: newExerciseIds });
+                            } else {
+                                batch.delete(d.ref);
+                            }
+                        });
                     }
 
                     await batch.commit();
@@ -2320,25 +2418,47 @@
             const editAction = item.type === 'pause' || item.type === 'text' ? `
                 <button id="edit-item-btn" class="material-button material-button-text w-full justify-start">Modifica</button>` : '';
 
-            const labelAction = item.type === 'exercise' ? `
-                <div class="mt-2 border-t pt-2">
-                    <p class="text-sm font-medium mb-2">Etichetta Colorata</p>
+            const carousel = document.querySelector(`#carousel-${itemId}`);
+            const currentIndex = carousel ? parseInt(carousel.dataset.currentIndex) : 0;
+            const currentExerciseId = (item.exerciseIds || [])[currentIndex] || (item.exerciseIds || [])[0];
+            if (!currentExerciseId) return;
+
+            const currentExercise = state.exercises.find(ex => ex.id === currentExerciseId);
+            const currentLabels = (item.labels && Array.isArray(item.labels[currentExerciseId])) ? item.labels[currentExerciseId] : [];
+
+            const renderLabelForm = () => {
+                if (currentLabels.length >= 3) return '<p class="text-sm text-gray-500">Massimo 3 etichette.</p>';
+                return `
                     <div class="flex gap-2">
-                         <input type="text" id="label-text" placeholder="Testo etichetta" class="input-field !p-2 flex-grow" value="${item.label?.text || ''}">
-                         <input type="hidden" id="label-color" value="${item.label?.color || COLORS[0]}">
+                         <input type="text" id="label-text" placeholder="Testo etichetta" class="input-field !p-2 flex-grow">
+                         <input type="hidden" id="label-color" value="${COLORS[0]}">
                     </div>
                     <div class="flex flex-wrap gap-2 mt-2">
-                        ${COLORS.map(c => `<div onclick="document.getElementById('label-color').value='${c}'; document.querySelectorAll('.color-dot').forEach(d=>d.classList.remove('selected')); this.classList.add('selected');" class="color-dot ${(item.label?.color || COLORS[0]) === c ? 'selected' : ''}" style="background-color:${c}"></div>`).join('')}
+                        ${COLORS.map(c => `<div onclick="document.getElementById('label-color').value='${c}'; document.querySelectorAll('.color-dot').forEach(d=>d.classList.remove('selected')); this.classList.add('selected');" class="color-dot ${COLORS[0] === c ? 'selected' : ''}" style="background-color:${c}"></div>`).join('')}
                     </div>
                      <div class="flex justify-end gap-2 mt-2">
-                        <button id="remove-label-btn" class="material-button material-button-text text-red-600 text-sm">Rimuovi</button>
-                        <button id="save-label-btn" class="material-button material-button-outlined text-sm">Salva Etichetta</button>
+                        <button id="save-label-btn" class="material-button material-button-outlined text-sm">Aggiungi Etichetta</button>
                     </div>
+                `;
+            }
+
+            const labelAction = item.type === 'exercise' ? `
+                <div class="mt-2 border-t pt-2">
+                    <p class="text-sm font-medium mb-2">Etichette per: <strong>${currentExercise.name}</strong></p>
+                    <div class="space-y-2 mb-4">
+                    ${currentLabels.map((label, index) => `
+                        <div class="flex justify-between items-center bg-gray-100 p-2 rounded">
+                            <span class="text-sm font-medium px-2 py-1 rounded-full" style="background-color:${label.color}; color: #fff;">${label.text}</span>
+                            <button onclick="window.app.removeSheetItemLabel('${sheetId}', '${itemId}', '${currentExerciseId}', ${index})" class="material-button-text p-1 rounded-full"><span class="material-icons text-sm">close</span></button>
+                        </div>
+                    `).join('')}
+                    </div>
+                    ${renderLabelForm()}
                 </div>
             ` : '';
             
             modalContainer.innerHTML = `
-                <div class="modal-content p-6">
+                <div class="modal-content p-6 overflow-y-auto">
                     <h3 class="text-xl font-medium mb-4">Azioni Elemento</h3>
                     <div class="space-y-2">
                         ${editAction}
@@ -2363,15 +2483,13 @@
                 saveLabelBtn.onclick = () => {
                     const text = document.getElementById('label-text').value.trim();
                     const color = document.getElementById('label-color').value;
-                    const label = text ? { text, color } : null;
-                    updateSheetItemLabel(sheetId, itemId, label);
+                    if (text) {
+                        const newLabel = { text, color };
+                        const updatedLabels = [...currentLabels, newLabel];
+                        updateSheetItemLabel(sheetId, itemId, currentExerciseId, updatedLabels);
+                    }
                 };
             }
-             const removeLabelBtn = document.getElementById('remove-label-btn');
-            if (removeLabelBtn) {
-                removeLabelBtn.onclick = () => updateSheetItemLabel(sheetId, itemId, null);
-            }
-
 
             modalContainer.classList.remove('hidden');
             document.body.classList.add('overflow-hidden');
@@ -2388,12 +2506,13 @@
             } catch(e) { console.error(e); showToast("Errore aggiornamento.", 'error'); }
         }
 
-        async function updateSheetItemLabel(sheetId, itemId, label) {
+        async function updateSheetItemLabel(sheetId, itemId, exerciseId, labelsArray) {
             const { userId } = state;
             if (!userId) return;
              try {
                 const docRef = doc(db, `/users/${userId}/workoutSheets/${sheetId}/items`, itemId);
-                await updateDoc(docRef, { label: label });
+                const labelKey = `labels.${exerciseId}`;
+                await updateDoc(docRef, { [labelKey]: labelsArray });
                 closeModal();
             } catch(e) { console.error(e); showToast("Errore aggiornamento etichetta.", 'error'); }
         }
@@ -2621,17 +2740,37 @@
         }
         
         function endWorkout() {
-             showConfirm(
-                'Termina Allenamento', 
-                'Sei sicuro di voler terminare l\'allenamento in anticipo? La sessione verrà salvata nello storico.', 
-                async () => {
-                    stopGlobalTimer();
-                    const workoutData = { ...state.workout, endTime: new Date() };
-                    await saveWorkoutSession(workoutData);
-                    exitWorkoutMode();
-                },
-                () => {}
-            );
+            document.getElementById('confirm-title').innerText = 'Termina Allenamento';
+            document.getElementById('confirm-message').innerHTML = 'Vuoi salvare questa sessione prima di uscire?';
+            const confirmModal = document.getElementById('confirm-modal');
+            const buttonContainer = document.getElementById('confirm-buttons');
+            
+            buttonContainer.innerHTML = `
+                <button id="custom-cancel" class="material-button material-button-text">Annulla</button>
+                <button id="custom-discard" class="material-button material-button-outlined !border-red-500 !text-red-500">Esci senza salvare</button>
+                <button id="custom-save" class="material-button material-button-filled">Salva ed Esci</button>
+            `;
+
+            confirmModal.classList.remove('hidden');
+            document.body.classList.add('overflow-hidden');
+            
+            const close = () => {
+                confirmModal.classList.add('hidden');
+                 document.body.classList.remove('overflow-hidden');
+            };
+
+            document.getElementById('custom-save').onclick = async () => {
+                stopGlobalTimer();
+                const workoutData = { ...state.workout, endTime: new Date() };
+                await saveWorkoutSession(workoutData);
+                close();
+                exitWorkoutMode();
+            };
+             document.getElementById('custom-discard').onclick = () => {
+                close();
+                exitWorkoutMode();
+            };
+            document.getElementById('custom-cancel').onclick = close;
         }
 
         async function finishAndSaveWorkout() {
@@ -2700,6 +2839,214 @@
                 state.workout.globalTimerIntervalId = null;
             }
         }
+        
+        // --- INIZIO BLOCCO NUOVE FUNZIONI (VARIANTS) ---
+
+        function openAddVariantModal(sheetId, itemId, primaryExerciseId) {
+            const primaryExercise = state.exercises.find(ex => ex.id === primaryExerciseId);
+            if (!primaryExercise) return showToast("Esercizio principale non trovato.", "error");
+
+            modalContainer.innerHTML = `
+                <div class="modal-content p-6">
+                    <h3 class="text-xl font-medium mb-2">Aggiungi Alternativa</h3>
+                    <p class="text-sm text-gray-500 mb-6">Per: <strong>${primaryExercise.name}</strong></p>
+                    <div class="flex flex-col gap-4">
+                        <button onclick="window.app.openVariantDbSelector('${sheetId}', '${itemId}')" class="material-button material-button-outlined w-full">Scegli dal Database</button>
+                        <button onclick="window.app.openVariantAiGenerator('${sheetId}', '${itemId}', '${primaryExerciseId}')" class="material-button material-button-filled w-full">✨ Genera con AI</button>
+                    </div>
+                    <div class="flex justify-end gap-2 mt-8">
+                        <button onclick="window.app.closeModal()" class="material-button material-button-text">Annulla</button>
+                    </div>
+                </div>
+            `;
+            modalContainer.classList.remove('hidden');
+            document.body.classList.add('overflow-hidden');
+        }
+
+        function openVariantDbSelector(sheetId, itemId) {
+            const item = (state.sheetItems[sheetId] || []).find(i => i.id === itemId);
+            const existingIds = item?.exerciseIds || (item?.exerciseId ? [item.exerciseId] : []);
+            
+            const availableExercises = state.exercises.filter(ex => !existingIds.includes(ex.id));
+
+            modalContainer.innerHTML = `
+                <div class="modal-content p-6 flex flex-col">
+                    <h3 class="text-xl font-medium mb-4">Scegli un Esercizio</h3>
+                    <select id="variant-exercise-select" class="input-field">
+                        <option value="">Seleziona...</option>
+                        ${state.categories.map(cat => `
+                            <optgroup label="${cat.name}">
+                                ${availableExercises.filter(ex => ex.categoryId === cat.id).map(ex => `
+                                    <option value="${ex.id}">${ex.name}</option>
+                                `).join('')}
+                            </optgroup>
+                        `).join('')}
+                         <optgroup label="Non Categorizzati">
+                                ${availableExercises.filter(ex => !ex.categoryId).map(ex => `
+                                    <option value="${ex.id}">${ex.name}</option>
+                                `).join('')}
+                         </optgroup>
+                    </select>
+                    <div class="flex justify-end gap-2 mt-6">
+                        <button onclick="window.app.closeModal()" class="material-button material-button-text">Annulla</button>
+                        <button id="add-variant-btn" class="material-button material-button-filled">Aggiungi</button>
+                    </div>
+                </div>
+            `;
+             document.getElementById('add-variant-btn').onclick = () => {
+                const selectedId = document.getElementById('variant-exercise-select').value;
+                if (selectedId) {
+                    addVariantToSheetItem(sheetId, itemId, selectedId);
+                    closeModal();
+                } else {
+                    showToast("Seleziona un esercizio.", "error");
+                }
+            };
+        }
+
+        async function addVariantToSheetItem(sheetId, itemId, newExerciseId, labels = null) {
+            const item = (state.sheetItems[sheetId] || []).find(i => i.id === itemId);
+            if (!item) return;
+            
+            const currentIds = item.exerciseIds || (item.exerciseId ? [item.exerciseId] : []);
+            if(currentIds.includes(newExerciseId)) return;
+
+            const newIds = [...currentIds, newExerciseId];
+            const dataToUpdate = { exerciseIds: newIds };
+
+            if(labels) {
+                 dataToUpdate[`labels.${newExerciseId}`] = labels;
+            }
+            
+            try {
+                const docRef = doc(db, `/users/${state.userId}/workoutSheets/${sheetId}/items`, itemId);
+                await updateDoc(docRef, dataToUpdate);
+                showToast("Alternativa aggiunta.", "success");
+            } catch (e) {
+                console.error("Errore aggiunta variante:", e);
+                showToast("Errore durante l'aggiunta.", "error");
+            }
+        }
+        
+        async function removeVariantFromSheetItem(sheetId, itemId, exerciseIdToRemove) {
+             const item = (state.sheetItems[sheetId] || []).find(i => i.id === itemId);
+            if (!item) return;
+
+            const currentIds = item.exerciseIds || (item.exerciseId ? [item.exerciseId] : []);
+            const newIds = currentIds.filter(id => id !== exerciseIdToRemove);
+            
+            if(newIds.length === 0) return showToast("Non puoi rimuovere l'esercizio principale.", "error");
+
+            try {
+                const docRef = doc(db, `/users/${state.userId}/workoutSheets/${sheetId}/items`, itemId);
+                await updateDoc(docRef, { 
+                    exerciseIds: newIds,
+                    [`labels.${exerciseIdToRemove}`]: null
+                });
+                showToast("Alternativa rimossa.", "success");
+            } catch (e) {
+                console.error("Errore rimozione variante:", e);
+                showToast("Errore durante la rimozione.", "error");
+            }
+        }
+        
+        function openVariantAiGenerator(sheetId, itemId, primaryExerciseId) {
+            modalContainer.innerHTML = `
+                <div class="modal-content p-6 overflow-y-auto">
+                    <h3 class="text-xl font-medium mb-1">✨ Genera Alternativa con AI</h3>
+                    <p class="text-sm text-gray-500 mb-6">L'AI creerà un nuovo esercizio e lo aggiungerà al tuo database.</p>
+                    <div id="ai-variant-form">
+                        <label for="ai-discipline" class="text-sm font-medium text-gray-700">Scegli una disciplina o contesto</label>
+                        <select id="ai-discipline" class="input-field mt-1">
+                            <option value="Palestra">Palestra (con attrezzi)</option>
+                            <option value="Corpo Libero">Corpo Libero</option>
+                            <option value="Cardio">Cardio</option>
+                            <option value="Atletica Leggera">Atletica Leggera</option>
+                            <option value="Calisthenics">Calisthenics</option>
+                            <option value="Stretching">Stretching / Mobilità</option>
+                        </select>
+                    </div>
+                    <div id="ai-variant-loader" class="hidden text-center py-8">
+                        <div class="flex justify-center mb-4"><div class="loader"></div></div>
+                        <p>L'AI sta creando la tua alternativa...</p>
+                    </div>
+                    <div class="flex justify-end gap-2 mt-6">
+                        <button onclick="window.app.closeModal()" class="material-button material-button-text">Annulla</button>
+                        <button id="generate-ai-variant-btn" class="material-button material-button-filled">✨ Genera</button>
+                    </div>
+                </div>
+            `;
+            document.getElementById('generate-ai-variant-btn').onclick = () => generateAiVariant(sheetId, itemId, primaryExerciseId);
+        }
+
+        async function generateAiVariant(sheetId, itemId, primaryExerciseId) {
+            const primaryExercise = state.exercises.find(ex => ex.id === primaryExerciseId);
+            if (!primaryExercise) return showToast("Esercizio principale non trovato.", "error");
+
+            const discipline = document.getElementById('ai-discipline').value;
+            
+            document.getElementById('ai-variant-form').classList.add('hidden');
+            document.getElementById('generate-ai-variant-btn').classList.add('hidden');
+            document.getElementById('ai-variant-loader').classList.remove('hidden');
+
+            const existingExerciseNames = state.exercises.map(ex => `"${ex.name}"`).join(', ');
+
+            const prompt = `Sei un esperto personal trainer. L'utente vuole un'alternativa all'esercizio "${primaryExercise.name}" che allena principalmente "${primaryExercise.zone || 'una zona corporea simile'}".
+            L'alternativa deve appartenere alla disciplina "${discipline}".
+
+            IMPORTANTE: L'utente ha già i seguenti esercizi nel suo database: [${existingExerciseNames}].
+            NON generare un esercizio con uno di questi nomi. La tua risposta DEVE essere un esercizio NUOVO e UNICO.
+            
+            Forniscimi una risposta ESCLUSIVAMENTE in formato JSON con la seguente struttura:
+            {
+              "name": "Nome del nuovo esercizio",
+              "zone": "${primaryExercise.zone || ''}",
+              "parameters": ["Parametro 1", "Parametro 2"],
+              "aiDetails": "Una spiegazione dettagliata dell'esercizio in formato HTML, che includa 'Esecuzione Corretta', 'Muscoli Coinvolti' e 'Errori Comuni'."
+            }
+            Assicurati che 'parameters' sia un array di stringhe e che 'aiDetails' sia una stringa HTML ben formattata.`;
+
+            const responseJsonString = await callGeminiAPI(prompt, true);
+            if (!responseJsonString) {
+                closeModal();
+                return;
+            }
+
+            try {
+                const newExerciseData = JSON.parse(responseJsonString);
+                
+                // Fallback check in case the AI ignores the instruction
+                const isDuplicate = state.exercises.some(ex => ex.name.trim().toLowerCase() === newExerciseData.name.trim().toLowerCase());
+                if (isDuplicate) {
+                    showToast("L'AI ha generato un duplicato. Per favore, riprova.", "error");
+                    closeModal();
+                    return;
+                }
+                
+                // 1. Aggiungi il nuovo esercizio al database
+                const exerciseCollection = collection(db, `/users/${state.userId}/exercises`);
+                const newExerciseRef = await addDoc(exerciseCollection, {
+                    ...newExerciseData,
+                    categoryId: primaryExercise.categoryId || null,
+                    createdAt: serverTimestamp(),
+                    updatedAt: serverTimestamp()
+                });
+
+                // 2. Aggiungi la variante alla scheda con l'etichetta AI
+                const aiLabel = { text: "AI", color: "#f59e0b" };
+                await addVariantToSheetItem(sheetId, itemId, newExerciseRef.id, [aiLabel]);
+                
+                closeModal();
+                showToast("Alternativa AI generata e aggiunta!", "success");
+
+            } catch(e) {
+                console.error("Errore durante la generazione dell'alternativa AI:", e);
+                showToast("L'AI ha restituito un formato non valido. Riprova.", "error");
+                closeModal();
+            }
+        }
+
+        // --- FINE BLOCCO NUOVE FUNZIONI (VARIANTS) ---
 
         // --- SETUP INIZIALE ---
         
@@ -2759,6 +3106,39 @@
                 } else {
                     btn.textContent = `Mostra Altri ${remainingCount}`;
                 }
+            },
+            navigateCarousel(carouselId, direction) {
+                const container = document.getElementById(carouselId)?.parentElement;
+                if (!container) return;
+                const track = container.querySelector('.variant-carousel-track');
+                const slides = container.querySelectorAll('.variant-slide');
+                const dotsContainer = container.parentElement.querySelector('.variant-dots');
+                if (!dotsContainer) return;
+                const dots = dotsContainer.querySelectorAll('.variant-dot');
+                
+                let currentIndex = parseInt(container.querySelector('.variant-carousel-container').dataset.currentIndex || '0');
+                let newIndex = currentIndex + direction;
+
+                if (newIndex < 0) newIndex = slides.length - 1;
+                if (newIndex >= slides.length) newIndex = 0;
+
+                track.style.transform = `translateX(-${newIndex * 100}%)`;
+                container.querySelector('.variant-carousel-container').dataset.currentIndex = newIndex;
+
+                dots.forEach((dot, i) => {
+                    dot.classList.toggle('active', i === newIndex);
+                });
+            },
+            openAddVariantModal,
+            removeVariantFromSheetItem,
+            openVariantDbSelector,
+            openVariantAiGenerator,
+            removeSheetItemLabel(sheetId, itemId, exerciseId, labelIndex) {
+                const item = (state.sheetItems[sheetId] || []).find(i => i.id === itemId);
+                if (!item) return;
+                const currentLabels = (item.labels && item.labels[exerciseId]) || [];
+                const updatedLabels = currentLabels.filter((_, index) => index !== labelIndex);
+                updateSheetItemLabel(sheetId, itemId, exerciseId, updatedLabels);
             }
         };
         
@@ -2808,13 +3188,33 @@
             
             onSnapshot(query(collection(db, `${basePath}/workoutSheets`), orderBy("order")), s => {
                 const newSheets = s.docs.map(d=>({id:d.id,...d.data()}));
+                const oldSheetIds = state.sheets.map(sh => sh.id);
                 const newSheetIds = newSheets.map(sh => sh.id);
+
+                // Unsubscribe from deleted sheets
+                oldSheetIds.filter(id => !newSheetIds.includes(id)).forEach(id => {
+                    if (state.listeners[id]) {
+                        state.listeners[id](); // This is the unsubscribe function
+                        delete state.listeners[id];
+                        delete state.sheetItems[id];
+                    }
+                });
+
                 newSheetIds.forEach(id => {
                     if (!state.listeners[id]) { 
                          state.listeners[id] = onSnapshot(query(collection(db, `${basePath}/workoutSheets/${id}/items`)), (snapshot) => {
                             state.sheetItems[id] = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                            if(state.currentPage === 'sheets') render();
-                        });
+                            // Rerender only if the current page is sheets or if in workout mode on this sheet
+                            if(state.isWorkoutModeActive && state.workout?.sheetId === id) {
+                                // Aggiorna dinamicamente i dati dell'allenamento in corso
+                                state.workout.items = state.sheetItems[id]
+                                    .filter(item => !item.isDeactivated)
+                                    .sort((a,b) => a.order - b.order);
+                                renderWorkoutStep(); 
+                            } else if (state.currentPage === 'sheets') {
+                                render();
+                            }
+                        }, e => console.error(`items listener error for sheet ${id}:`, e));
                     }
                 });
                 state.sheets = newSheets;
