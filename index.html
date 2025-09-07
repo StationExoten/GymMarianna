@@ -261,7 +261,9 @@
             </div>
         </nav>
 
-        <main class="container mx-auto p-4 pb-20 md:pb-4">
+        <!-- ===== INIZIO MODIFICA ===== -->
+        <main class="container mx-auto p-4 pb-40 md:pb-24">
+        <!-- ===== FINE MODIFICA ===== -->
             <div id="page-sheets" class="hidden">
                 <div class="flex justify-between items-center mb-4 flex-wrap gap-2">
                     <h2 class="text-2xl font-medium">Schede Allenamento</h2>
@@ -673,7 +675,6 @@
                 if (!acc[session.sheetId]) {
                     acc[session.sheetId] = { name: session.sheetName, times: [] };
                 }
-                // --- MODIFICA: Aggiungo l'ID della sessione per permettere l'eliminazione ---
                 acc[session.sheetId].times.push({ id: session.id, date: session.startTime, duration: session.durationSeconds });
                 return acc;
             }, {});
@@ -2733,7 +2734,6 @@
             deleteSheetItem, toggleTimer, resetTimer, openContainerModal, deleteContainer,
             toggleExpansion, reorderEntity,
             openWorkoutSelectionModal, renderWorkoutSheetSelection, startWorkout,
-            // --- INIZIO NUOVE FUNZIONI GLOBALI ---
             deleteWorkoutSession(sessionId) {
                 if (!sessionId) return;
                 showConfirm("Elimina Sessione", "Sei sicuro di voler eliminare questa sessione di allenamento dallo storico? L'azione è irreversibile.", async () => {
@@ -2760,7 +2760,6 @@
                     btn.textContent = `Mostra Altri ${remainingCount}`;
                 }
             }
-            // --- FINE NUOVE FUNZIONI GLOBALI ---
         };
         
         function startApp() {
