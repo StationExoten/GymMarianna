@@ -667,13 +667,14 @@
 
             const totalWorkouts = sessions.length;
             const totalTimeSeconds = sessions.reduce((sum, s) => sum + s.durationSeconds, 0);
-            const avgTimeSeconds = totalTimeSeconds / totalWorkouts;
+            const avgTimeSeconds = totalTimeSeconds > 0 ? totalTimeSeconds / totalWorkouts : 0;
 
             const sessionsBySheet = sessions.reduce((acc, session) => {
                 if (!acc[session.sheetId]) {
                     acc[session.sheetId] = { name: session.sheetName, times: [] };
                 }
-                acc[session.sheetId].times.push({ date: session.startTime, duration: session.durationSeconds });
+                // --- MODIFICA: Aggiungo l'ID della sessione per permettere l'eliminazione ---
+                acc[session.sheetId].times.push({ id: session.id, date: session.startTime, duration: session.durationSeconds });
                 return acc;
             }, {});
 
@@ -695,24 +696,46 @@
 
                 <h3 class="text-xl font-medium mb-2">Progresso per Scheda</h3>
                 <div class="space-y-4">
-                    ${Object.keys(sessionsBySheet).length > 0 ? Object.entries(sessionsBySheet).map(([sheetId, data]) => `
+                    ${Object.keys(sessionsBySheet).length > 0 ? Object.entries(sessionsBySheet).map(([sheetId, data]) => {
+                        const sortedTimes = data.times.sort((a,b) => b.date.seconds - a.date.seconds);
+                        const previewLimit = 3;
+                        const hasMore = sortedTimes.length > previewLimit;
+
+                        const renderSessionLi = (t) => `
+                            <li class="flex justify-between items-center p-1 rounded hover:bg-gray-50">
+                                <div>
+                                    <span>${new Date(t.date.seconds * 1000).toLocaleDateString('it-IT', {day: '2-digit', month: 'long', year: 'numeric'})}</span>
+                                    <span class="font-medium ml-4">${formatTime(t.duration)}</span>
+                                </div>
+                                <button onclick="window.app.deleteWorkoutSession('${t.id}')" title="Elimina sessione" class="material-button-text !p-1 !min-w-0 h-6 rounded-full text-gray-400 hover:text-red-600">
+                                    <span class="material-icons text-base">delete_outline</span>
+                                </button>
+                            </li>
+                        `;
+
+                        return `
                         <div class="material-card p-4">
                             <h4 class="font-bold text-lg">${data.name}</h4>
                             <p class="text-sm text-gray-500 mb-2">Completata ${data.times.length} volte</p>
                             <ul class="space-y-1 text-sm">
-                                ${data.times.sort((a,b) => b.date.seconds - a.date.seconds).slice(0, 5).map(t => `
-                                    <li class="flex justify-between p-1 rounded hover:bg-gray-50">
-                                        <span>${new Date(t.date.seconds * 1000).toLocaleDateString('it-IT', {day: '2-digit', month: 'long', year: 'numeric'})}</span>
-                                        <span class="font-medium">${formatTime(t.duration)}</span>
-                                    </li>
-                                `).join('')}
-                                ${data.times.length > 5 ? `<li class="text-center text-xs text-gray-400">...e altre ${data.times.length - 5} sessioni.</li>` : ''}
+                                ${sortedTimes.slice(0, previewLimit).map(renderSessionLi).join('')}
+                                ${hasMore ? `
+                                    <div id="extra-sessions-${sheetId}" class="hidden space-y-1">
+                                        ${sortedTimes.slice(previewLimit).map(renderSessionLi).join('')}
+                                    </div>
+                                ` : ''}
                             </ul>
+                            ${hasMore ? `
+                                <button id="toggle-sessions-btn-${sheetId}" onclick="window.app.toggleExtraSessions('${sheetId}', ${sortedTimes.length - previewLimit})" class="material-button-text text-sm mt-2">
+                                    Mostra Altri ${sortedTimes.length - previewLimit}
+                                </button>
+                            ` : ''}
                         </div>
-                    `).join('') : '<p class="text-gray-500">Nessuna scheda ripetuta.</p>'}
+                    `}).join('') : '<p class="text-gray-500">Nessuna scheda ripetuta.</p>'}
                 </div>
             `;
         }
+
 
         function renderSheetsPage() {
             const list = document.getElementById('sheets-list');
@@ -966,7 +989,6 @@
             }
         }
 
-        // CORREZIONE: Aggiunto onCancel come parametro
         function showConfirm(title, message, onConfirm, onCancel = () => {}) {
             document.getElementById('confirm-title').innerText = title;
             document.getElementById('confirm-message').innerHTML = message;
@@ -986,20 +1008,18 @@
 
             const close = () => {
                 confirmModal.classList.add('hidden');
-                // Non rimuovere overflow-hidden se si è in workout mode e un altro modale è ancora aperto
                 if(!state.isWorkoutModeActive || modalContainer.classList.contains('hidden')) {
                      document.body.classList.remove('overflow-hidden');
                 }
             }
             
-            // Sostituisci i listener per evitare accumuli
             const newOkButton = okButton.cloneNode(true);
             okButton.parentNode.replaceChild(newOkButton, okButton);
             const newCancelButton = cancelButton.cloneNode(true);
             cancelButton.parentNode.replaceChild(newCancelButton, cancelButton);
 
-            newOkButton.onclick = () => {
-                onConfirm();
+            newOkButton.onclick = async () => {
+                await onConfirm();
                 close();
             };
             newCancelButton.onclick = () => {
@@ -2512,7 +2532,6 @@
             document.body.classList.add('overflow-hidden');
         }
 
-        // CORREZIONE: Funzione resa globale per essere chiamata dall'HTML generato
         function renderWorkoutSheetSelection(containerId) {
             const sheets = state.sheets.filter(s => s.containerId === containerId);
             const content = document.querySelector('#modal-container .modal-content');
@@ -2599,23 +2618,39 @@
             state.workout.currentItemIndex--;
             renderWorkoutStep();
         }
-
-        // CORREZIONE: Logica di conferma a cascata
+        
         function endWorkout() {
-             showConfirm('Termina Allenamento', 'Sei sicuro di voler terminare l\'allenamento?', () => {
-                stopGlobalTimer();
-                const workoutData = { ...state.workout, endTime: new Date() };
-                
-                // Secondo showConfirm per salvare
-                showConfirm('Salva Sessione', `Allenamento completato in ${formatGlobalTime(workoutData.elapsedSeconds)}. Vuoi salvare la sessione nello storico?`,
-                    () => saveWorkoutSession(workoutData), // onConfirm: salva
-                    () => exitWorkoutMode() // onCancel: esci senza salvare
-                );
-             });
+             showConfirm(
+                'Termina Allenamento', 
+                'Sei sicuro di voler terminare l\'allenamento in anticipo? La sessione verrà salvata nello storico.', 
+                async () => {
+                    stopGlobalTimer();
+                    const workoutData = { ...state.workout, endTime: new Date() };
+                    await saveWorkoutSession(workoutData);
+                    exitWorkoutMode();
+                },
+                () => {}
+            );
+        }
+
+        async function finishAndSaveWorkout() {
+            stopGlobalTimer();
+            const workoutData = { ...state.workout, endTime: new Date() };
+            const finalBtn = document.getElementById('end-workout-btn-final');
+            if (finalBtn) {
+                finalBtn.disabled = true;
+                finalBtn.textContent = 'Salvataggio...';
+            }
+            await saveWorkoutSession(workoutData);
+            exitWorkoutMode();
         }
         
         async function saveWorkoutSession(workoutData) {
             const { userId } = state;
+            if (!userId || !workoutData) {
+                showToast("Dati utente o allenamento mancanti per il salvataggio.", "error");
+                return;
+            }
             const dataToSave = {
                 sheetId: workoutData.sheetId,
                 sheetName: workoutData.sheetName,
@@ -2623,15 +2658,12 @@
                 endTime: Timestamp.fromDate(workoutData.endTime),
                 durationSeconds: workoutData.elapsedSeconds,
             };
-
             try {
                 await addDoc(collection(db, `/users/${userId}/workoutSessions`), dataToSave);
                 showToast("Sessione salvata con successo!", "success");
             } catch(e) {
                 console.error("Errore salvataggio sessione:", e);
                 showToast("Errore durante il salvataggio della sessione.", "error");
-            } finally {
-                exitWorkoutMode();
             }
         }
         
@@ -2640,16 +2672,20 @@
             stopAllTimers();
             state.isWorkoutModeActive = false;
             state.workout = null;
-
             document.getElementById('app-container').classList.remove('hidden');
             document.getElementById('workout-mode-container').classList.add('hidden');
             document.body.classList.remove('overflow-hidden');
-            render();
+            const finalBtn = document.getElementById('end-workout-btn-final');
+            if(finalBtn) {
+                finalBtn.disabled = false;
+                finalBtn.textContent = 'Termina e Salva';
+            }
+            navigate('history');
         }
 
         function startGlobalTimer() {
             if (state.workout?.globalTimerIntervalId) clearInterval(state.workout.globalTimerIntervalId);
-            state.workout.elapsedSeconds = 0; // Resetta il timer all'inizio
+            state.workout.elapsedSeconds = 0;
             document.getElementById('workout-global-timer').textContent = formatGlobalTime(0);
             state.workout.globalTimerIntervalId = setInterval(() => {
                 state.workout.elapsedSeconds++;
@@ -2697,6 +2733,34 @@
             deleteSheetItem, toggleTimer, resetTimer, openContainerModal, deleteContainer,
             toggleExpansion, reorderEntity,
             openWorkoutSelectionModal, renderWorkoutSheetSelection, startWorkout,
+            // --- INIZIO NUOVE FUNZIONI GLOBALI ---
+            deleteWorkoutSession(sessionId) {
+                if (!sessionId) return;
+                showConfirm("Elimina Sessione", "Sei sicuro di voler eliminare questa sessione di allenamento dallo storico? L'azione è irreversibile.", async () => {
+                    try {
+                        await deleteDoc(doc(db, `/users/${state.userId}/workoutSessions`, sessionId));
+                        showToast("Sessione eliminata.", "success");
+                    } catch(e) {
+                        console.error("Errore eliminazione sessione:", e);
+                        showToast("Errore durante l'eliminazione.", "error");
+                    }
+                });
+            },
+            toggleExtraSessions(sheetId, remainingCount) {
+                const extraDiv = document.getElementById(`extra-sessions-${sheetId}`);
+                const btn = document.getElementById(`toggle-sessions-btn-${sheetId}`);
+                if (!extraDiv || !btn) return;
+                
+                const isHidden = extraDiv.classList.contains('hidden');
+                extraDiv.classList.toggle('hidden');
+                
+                if (isHidden) {
+                    btn.textContent = 'Mostra Meno';
+                } else {
+                    btn.textContent = `Mostra Altri ${remainingCount}`;
+                }
+            }
+            // --- FINE NUOVE FUNZIONI GLOBALI ---
         };
         
         function startApp() {
@@ -2720,7 +2784,7 @@
             document.getElementById('workout-next-btn').onclick = workoutNextStep;
             document.getElementById('workout-prev-btn').onclick = workoutPrevStep;
             document.getElementById('end-workout-btn-header').onclick = endWorkout;
-            document.getElementById('end-workout-btn-final').onclick = endWorkout;
+            document.getElementById('end-workout-btn-final').onclick = finishAndSaveWorkout;
             
             document.getElementById('history-tab-dashboard').onclick = () => {
                 document.getElementById('history-tab-dashboard').classList.add('active');
