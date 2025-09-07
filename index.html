@@ -257,11 +257,14 @@
                 Successivo <span class="material-icons">arrow_forward</span>
             </button>
         </div>
-         <div id="workout-finish-view" class="hidden flex-col items-center justify-center text-center p-8">
+         <div id="workout-finish-view" class="hidden flex-1 flex-col items-center justify-center text-center p-8">
             <span class="material-icons text-6xl text-green-500">check_circle</span>
             <h3 class="text-2xl font-bold mt-4">Allenamento Completato!</h3>
             <p class="text-gray-600 mt-2">Ottimo lavoro. Premi il pulsante per terminare e salvare la sessione.</p>
-            <button id="end-workout-btn-final" class="material-button material-button-filled !bg-green-600 mt-6 !text-lg !px-8 !py-4">Termina e Salva</button>
+            <div class="flex flex-col gap-4 mt-6">
+                <button id="end-workout-btn-final" class="material-button material-button-filled !bg-green-600 !text-lg !px-8 !py-4">Termina e Salva</button>
+                <button onclick="window.app.workoutPrevStep()" class="material-button material-button-text">Torna agli Esercizi</button>
+            </div>
         </div>
     </div>
 
@@ -955,7 +958,7 @@
                             const latestHistory = state.history
                                 .filter(h => h.exerciseId === exId && h.params)
                                 .sort((a,b) => b.timestamp.seconds - a.timestamp.seconds)[0];
-                            const labelList = Array.isArray(labels[exId]) ? labels[exId] : [];
+                            const labelList = (labels && Array.isArray(labels[exId])) ? labels[exId] : [];
                             const labelHtml = labelList.map(label => 
                                 `<span class="text-xs font-medium px-2 py-1 rounded-full mr-1" style="background-color:${label.color || '#cccccc'}; color: #fff;">${label.text}</span>`
                             ).join('');
@@ -967,7 +970,7 @@
                                             <span class="font-bold text-lg cursor-pointer hover:underline" onclick="window.app.openExerciseModal('${exercise.id}')">${exercise.name}</span>
                                             ${labelHtml ? `<div class="mt-1 flex flex-wrap gap-1">${labelHtml}</div>` : ''}
                                         </div>
-                                        ${!isWorkout && exerciseIds.length > 1 && index > 0 ? `
+                                        ${!isWorkout && exerciseIds.length > 1 && exerciseIds.indexOf(exId) > 0 ? `
                                             <button onclick="window.app.removeVariantFromSheetItem('${sheetId}', '${itemId}', '${exId}')" title="Rimuovi questa alternativa" class="material-button-text !p-1 !min-w-0 h-6 rounded-full text-gray-400 hover:text-red-600">
                                                 <span class="material-icons text-base">remove_circle_outline</span>
                                             </button>
@@ -2417,10 +2420,11 @@
 
             const editAction = item.type === 'pause' || item.type === 'text' ? `
                 <button id="edit-item-btn" class="material-button material-button-text w-full justify-start">Modifica</button>` : '';
-
+            
             const carousel = document.querySelector(`#carousel-${itemId}`);
             const currentIndex = carousel ? parseInt(carousel.dataset.currentIndex) : 0;
-            const currentExerciseId = (item.exerciseIds || [])[currentIndex] || (item.exerciseIds || [])[0];
+            const currentExerciseId = (item.exerciseIds || (item.exerciseId ? [item.exerciseId] : []))[currentIndex];
+            
             if (!currentExerciseId) return;
 
             const currentExercise = state.exercises.find(ex => ex.id === currentExerciseId);
@@ -2704,8 +2708,20 @@
 
         function renderWorkoutStep() {
             if (!state.workout) return;
-
             const { items, currentItemIndex, sheetName } = state.workout;
+
+            const isFinished = currentItemIndex >= items.length;
+            
+            document.getElementById('workout-item-content').classList.toggle('hidden', isFinished);
+            document.getElementById('workout-finish-view').classList.toggle('hidden', !isFinished);
+            
+            if (isFinished) {
+                document.getElementById('workout-step-counter').textContent = "Completato!";
+                document.getElementById('workout-navigation').classList.add('hidden');
+                return;
+            }
+            
+            document.getElementById('workout-navigation').classList.remove('hidden');
             const item = items[currentItemIndex];
             
             document.getElementById('workout-sheet-name').textContent = sheetName;
@@ -2721,21 +2737,35 @@
             }
             contentDiv.innerHTML = html;
             
-            document.getElementById('workout-prev-btn').disabled = currentItemIndex === 0;
-            const isLastStep = currentItemIndex >= items.length - 1;
-            document.getElementById('workout-navigation').classList.toggle('hidden', isLastStep);
-            document.getElementById('workout-finish-view').classList.toggle('hidden', !isLastStep);
+            const prevBtn = document.getElementById('workout-prev-btn');
+            const nextBtn = document.getElementById('workout-next-btn');
+
+            prevBtn.disabled = currentItemIndex === 0;
+
+            const isLastStep = currentItemIndex === items.length - 1;
+            if (isLastStep) {
+                nextBtn.innerHTML = `Termina <span class="material-icons">flag</span>`;
+                nextBtn.classList.add('!bg-green-600');
+            } else {
+                nextBtn.innerHTML = `Successivo <span class="material-icons">arrow_forward</span>`;
+                nextBtn.classList.remove('!bg-green-600');
+            }
         }
         
         function workoutNextStep() {
-            if (!state.workout || state.workout.currentItemIndex >= state.workout.items.length - 1) return;
+            if (!state.workout || state.workout.currentItemIndex >= state.workout.items.length) return;
             state.workout.currentItemIndex++;
             renderWorkoutStep();
         }
         
         function workoutPrevStep() {
-             if (!state.workout || state.workout.currentItemIndex <= 0) return;
-            state.workout.currentItemIndex--;
+             if (!state.workout || state.workout.currentItemIndex < 0) return;
+             
+             if (state.workout.currentItemIndex >= state.workout.items.length) {
+                 state.workout.currentItemIndex = state.workout.items.length - 1;
+             } else {
+                state.workout.currentItemIndex--;
+             }
             renderWorkoutStep();
         }
         
@@ -2764,11 +2794,11 @@
                 const workoutData = { ...state.workout, endTime: new Date() };
                 await saveWorkoutSession(workoutData);
                 close();
-                exitWorkoutMode();
+                exitWorkoutMode(true);
             };
              document.getElementById('custom-discard').onclick = () => {
                 close();
-                exitWorkoutMode();
+                exitWorkoutMode(false);
             };
             document.getElementById('custom-cancel').onclick = close;
         }
@@ -2782,7 +2812,7 @@
                 finalBtn.textContent = 'Salvataggio...';
             }
             await saveWorkoutSession(workoutData);
-            exitWorkoutMode();
+            exitWorkoutMode(true);
         }
         
         async function saveWorkoutSession(workoutData) {
@@ -2807,7 +2837,7 @@
             }
         }
         
-        function exitWorkoutMode() {
+        function exitWorkoutMode(navigateToHistory = true) {
             stopGlobalTimer();
             stopAllTimers();
             state.isWorkoutModeActive = false;
@@ -2820,7 +2850,11 @@
                 finalBtn.disabled = false;
                 finalBtn.textContent = 'Termina e Salva';
             }
-            navigate('history');
+            if (navigateToHistory) {
+                navigate('history');
+            } else {
+                navigate('sheets');
+            }
         }
 
         function startGlobalTimer() {
@@ -2871,37 +2905,68 @@
 
             modalContainer.innerHTML = `
                 <div class="modal-content p-6 flex flex-col">
-                    <h3 class="text-xl font-medium mb-4">Scegli un Esercizio</h3>
-                    <select id="variant-exercise-select" class="input-field">
-                        <option value="">Seleziona...</option>
-                        ${state.categories.map(cat => `
-                            <optgroup label="${cat.name}">
-                                ${availableExercises.filter(ex => ex.categoryId === cat.id).map(ex => `
-                                    <option value="${ex.id}">${ex.name}</option>
-                                `).join('')}
-                            </optgroup>
-                        `).join('')}
-                         <optgroup label="Non Categorizzati">
-                                ${availableExercises.filter(ex => !ex.categoryId).map(ex => `
-                                    <option value="${ex.id}">${ex.name}</option>
-                                `).join('')}
-                         </optgroup>
-                    </select>
+                    <h3 class="text-xl font-medium mb-4">Scegli un'Alternativa</h3>
+                    <div id="add-items-content"></div>
                     <div class="flex justify-end gap-2 mt-6">
                         <button onclick="window.app.closeModal()" class="material-button material-button-text">Annulla</button>
-                        <button id="add-variant-btn" class="material-button material-button-filled">Aggiungi</button>
                     </div>
                 </div>
             `;
-             document.getElementById('add-variant-btn').onclick = () => {
-                const selectedId = document.getElementById('variant-exercise-select').value;
-                if (selectedId) {
+
+            const contentDiv = document.getElementById('add-items-content');
+            contentDiv.innerHTML = `
+                <input type="text" id="search-variant-modal" placeholder="Cerca per nome, zona o categoria..." class="input-field mb-2">
+                <div id="variant-selection-list" class="max-h-60 overflow-y-auto space-y-2 border p-2 rounded"></div>
+            `;
+
+            const renderVariantList = () => {
+                const listContainer = document.getElementById('variant-selection-list');
+                const searchTerm = document.getElementById('search-variant-modal').value.toLowerCase();
+
+                const filtered = availableExercises.filter(ex => {
+                    const category = state.categories.find(c => c.id === ex.categoryId);
+                    return ex.name.toLowerCase().includes(searchTerm) ||
+                           (ex.zone && ex.zone.toLowerCase().includes(searchTerm)) ||
+                           (category && category.name.toLowerCase().includes(searchTerm));
+                });
+                
+                const exercisesByCategory = filtered.reduce((acc, ex) => {
+                    const catId = ex.categoryId || 'uncategorized';
+                    if (!acc[catId]) acc[catId] = [];
+                    acc[catId].push(ex);
+                    return acc;
+                }, {});
+
+                const allCategories = [...state.categories, {id: 'uncategorized', name: 'Non Categorizzati'}];
+                
+                let html = allCategories.map(cat => {
+                    const exercises = exercisesByCategory[cat.id] || [];
+                    if (exercises.length === 0) return '';
+                    return `
+                        <div>
+                            <h4 class="font-bold text-gray-600 mt-2 first:mt-0">${cat.name}</h4>
+                            ${exercises.map(ex => `
+                                <div data-exercise-id="${ex.id}" class="flex items-center gap-3 p-2 rounded hover:bg-gray-100 cursor-pointer">
+                                    <span class="material-icons text-purple-600">fitness_center</span>
+                                    <span>${ex.name}</span>
+                                </div>`).join('')}
+                        </div>`;
+                }).join('');
+
+                listContainer.innerHTML = html || '<p class="text-center text-gray-500 p-4">Nessun esercizio disponibile.</p>';
+            };
+
+            document.getElementById('search-variant-modal').addEventListener('input', renderVariantList);
+            document.getElementById('variant-selection-list').addEventListener('click', (event) => {
+                const exerciseRow = event.target.closest('[data-exercise-id]');
+                if (exerciseRow) {
+                    const selectedId = exerciseRow.dataset.exerciseId;
                     addVariantToSheetItem(sheetId, itemId, selectedId);
                     closeModal();
-                } else {
-                    showToast("Seleziona un esercizio.", "error");
                 }
-            };
+            });
+
+            renderVariantList();
         }
 
         async function addVariantToSheetItem(sheetId, itemId, newExerciseId, labels = null) {
@@ -3080,7 +3145,7 @@
             toggleSheetItemDone, reorderSheetItem, openSheetItemActions,
             deleteSheetItem, toggleTimer, resetTimer, openContainerModal, deleteContainer,
             toggleExpansion, reorderEntity,
-            openWorkoutSelectionModal, renderWorkoutSheetSelection, startWorkout,
+            openWorkoutSelectionModal, renderWorkoutSheetSelection, startWorkout, workoutPrevStep,
             deleteWorkoutSession(sessionId) {
                 if (!sessionId) return;
                 showConfirm("Elimina Sessione", "Sei sicuro di voler eliminare questa sessione di allenamento dallo storico? L'azione è irreversibile.", async () => {
