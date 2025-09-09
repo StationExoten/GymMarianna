@@ -5,6 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Workout Tracker</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
+    <script src="https://cdn.jsdelivr.net/npm/date-fns"></script>
+    
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
     <style>
@@ -158,7 +162,11 @@
         .sheet-items-list > .sheet-item:not(:first-child) {
             border-top: 1px solid #e0e0e0;
         }
-
+        /* Stili per elementi archiviati */
+        .archived-item {
+            background-color: #f5f5f5 !important;
+            opacity: 0.7;
+        }
 
         /* Scrollbar styles */
         ::-webkit-scrollbar {
@@ -318,8 +326,15 @@
                 </div>
                 <div class="flex flex-col md:flex-row gap-2 mb-4">
                      <input type="text" id="search-sheets" placeholder="Cerca per nome scheda, esercizio, categoria..." class="input-field flex-grow">
+                     <button id="toggle-archive-view-btn" class="material-button material-button-outlined flex items-center gap-2">
+                        <span class="material-icons">archive</span> Mostra Archiviati
+                    </button>
                 </div>
                 <div id="sheets-list" class="space-y-4"></div>
+                <div id="archived-sheets-list" class="hidden mt-8">
+                    <h3 class="text-xl font-medium text-gray-500 border-b pb-2 mb-4">Elementi Archiviati</h3>
+                    <div class="space-y-4"></div>
+                </div>
             </div>
 
             <div id="page-history" class="hidden">
@@ -376,11 +391,15 @@
     </div>
 
     <!-- ===== ELEMENTI SPOSTATI QUI (INIZIO) ===== -->
-    <!-- Questi elementi sono stati spostati al di fuori di #app-container -->
-    <!-- in modo che rimangano visibili anche quando #app-container è nascosto -->
-    <div id="modal-container" class="fixed inset-0 z-[90] flex items-center justify-center modal-backdrop hidden"></div>
-    <div id="confirm-modal" class="fixed inset-0 z-[95] flex items-center justify-center modal-backdrop hidden">
-        <div class="modal-content p-6">
+    <!-- NUOVO: Aggiunto onclick al backdrop del modal -->
+    <div id="modal-container" onclick="window.app.closeModal()" class="fixed inset-0 z-[90] flex items-center justify-center modal-backdrop hidden"></div>
+    
+    <!-- NUOVO: Aggiunto onclick al backdrop e bottone di chiusura -->
+    <div id="confirm-modal" onclick="document.getElementById('confirm-cancel')?.click()" class="fixed inset-0 z-[95] flex items-center justify-center modal-backdrop hidden">
+        <div class="modal-content p-6 relative" onclick="event.stopPropagation()">
+            <button onclick="document.getElementById('confirm-cancel')?.click()" class="absolute top-4 right-4 z-10 p-2 rounded-full material-button-text hover:bg-gray-200 !min-w-0">
+                <span class="material-icons">close</span>
+            </button>
             <h3 id="confirm-title" class="text-xl font-medium mb-4">Conferma</h3>
             <p id="confirm-message" class="mb-6 text-gray-600">Sei sicuro di voler procedere?</p>
             <div id="confirm-buttons" class="flex justify-end gap-2">
@@ -421,8 +440,8 @@
         const db = getFirestore(app);
         const auth = getAuth(app);
 
-        // ** NUOVO: Variabile per il Wake Lock **
         let wakeLock = null;
+        let chartInstance = null;
         
         // Stato dell'applicazione
         const state = {
@@ -434,11 +453,12 @@
             sheets: [],
             sheetContainers: [],
             sheetItems: {},
-            workoutSessions: [], // Per la dashboard
+            workoutSessions: [], 
             listeners: {},
             timers: {},
             isWorkoutModeActive: false,
-            workout: null, // { sheetId, items, currentItemIndex, startTime, globalTimerIntervalId, elapsedSeconds }
+            workout: null,
+            showArchived: false,
         };
         
         const ZONES = ["Braccia", "Spalle", "Dorso", "Petto", "Addome", "Glutei", "Gambe", "Cardio"];
@@ -465,7 +485,6 @@
         const fab = document.getElementById('fab');
         const modalContainer = document.getElementById('modal-container');
         
-        // --- FUNZIONE UTILITY DI SANIFICAZIONE ---
         function sanitizeForId(text) {
             if (!text) return '';
             return text.replace(/[\s_]/g, '-').replace(/[^a-zA-Z0-9-]/g, '');
@@ -508,7 +527,7 @@
         
         // --- FUNZIONI DI RENDERING ---
         function render() {
-            if (!state.userId || state.isWorkoutModeActive) return; // Non renderizzare se in workout mode
+            if (!state.userId || state.isWorkoutModeActive) return; 
             switch (state.currentPage) {
                 case 'sheets': renderSheetsPage(); break;
                 case 'history': renderHistoryPage(); break;
@@ -530,7 +549,6 @@
                 state.categories.find(c => c.id === ex.categoryId)?.name.toLowerCase().includes(searchTerm)
             );
 
-            // Sorting
             switch (sortOption) {
                 case 'name_asc': filteredExercises.sort((a, b) => a.name.localeCompare(b.name)); break;
                 case 'name_desc': filteredExercises.sort((a, b) => b.name.localeCompare(a.name)); break;
@@ -782,117 +800,124 @@
 
 
         function renderSheetsPage() {
-            const list = document.getElementById('sheets-list');
-            if (!list) return;
+            const listContainer = document.getElementById('sheets-list');
+            const archivedListContainer = document.getElementById('archived-sheets-list').querySelector('div');
+            const archivedContainer = document.getElementById('archived-sheets-list');
+            if (!listContainer || !archivedListContainer) return;
 
             const searchTerm = document.getElementById('search-sheets').value.toLowerCase();
             const expansionState = getExpansionState();
 
-            const filteredSheets = state.sheets.filter(sheet => {
-                if (searchTerm === '') return true;
-                if (sheet.name.toLowerCase().includes(searchTerm) || (sheet.description && sheet.description.toLowerCase().includes(searchTerm))) {
-                    return true;
-                }
-                const items = state.sheetItems[sheet.id] || [];
-                return items.some(item => {
-                    const exerciseIds = item.exerciseIds || (item.exerciseId ? [item.exerciseId] : []);
-                    if (item.type !== 'exercise' || exerciseIds.length === 0) return false;
-                    
-                    return exerciseIds.some(exId => {
-                        const exercise = state.exercises.find(ex => ex.id === exId);
-                        if (!exercise) return false;
-                        const category = state.categories.find(c => c.id === exercise.categoryId);
-                        return exercise.name.toLowerCase().includes(searchTerm) || (category && category.name.toLowerCase().includes(searchTerm));
+            const activeContainers = state.sheetContainers.filter(c => !c.isArchived);
+            const archivedContainers = state.sheetContainers.filter(c => c.isArchived);
+            const activeSheets = state.sheets.filter(s => !s.isArchived);
+            const archivedSheets = state.sheets.filter(s => s.isArchived);
+
+            const renderGroup = (containers, sheets, isArchivedView) => {
+                let html = '';
+                const filteredSheets = sheets.filter(sheet => {
+                    if (searchTerm === '') return true;
+                    if (sheet.name.toLowerCase().includes(searchTerm) || (sheet.description && sheet.description.toLowerCase().includes(searchTerm))) return true;
+                    const items = state.sheetItems[sheet.id] || [];
+                    return items.some(item => {
+                        const exerciseIds = item.exerciseIds || [];
+                        if (item.type !== 'exercise' || exerciseIds.length === 0) return false;
+                        return exerciseIds.some(exId => {
+                            const exercise = state.exercises.find(ex => ex.id === exId);
+                            if (!exercise) return false;
+                            const category = state.categories.find(c => c.id === exercise.categoryId);
+                            return exercise.name.toLowerCase().includes(searchTerm) || (category && category.name.toLowerCase().includes(searchTerm));
+                        });
                     });
                 });
-            });
 
-            const sheetsByContainer = filteredSheets.reduce((acc, sheet) => {
-                const containerId = sheet.containerId || null; // Use null for consistency
-                if (!acc[containerId]) acc[containerId] = [];
-                acc[containerId].push(sheet);
-                return acc;
-            }, {});
+                const sheetsByContainer = filteredSheets.reduce((acc, sheet) => {
+                    const containerId = sheet.containerId || null;
+                    if (!acc[containerId]) acc[containerId] = [];
+                    acc[containerId].push(sheet);
+                    return acc;
+                }, {});
 
-            if (state.sheets.length === 0 && state.sheetContainers.length === 0) {
-                list.innerHTML = `<p class="text-center text-gray-500">Nessuna scheda o contenitore. Inizia creando una scheda o usa il ✨ generatore AI.</p>`;
-                return;
-            }
-            
-            let html = state.sheetContainers.map((container, index, allContainers) => {
-                const sheets = sheetsByContainer[container.id] || [];
-                if (searchTerm !== '' && sheets.length === 0) return '';
-
-                const isExpanded = expansionState.containers.includes(container.id);
-                return `
-                    <div class="material-card" style="background-color: ${container.color || '#EFF6FF'}">
-                        <div class="p-4 cursor-pointer" onclick="window.app.toggleExpansion('container', '${container.id}')">
-                            <div class="flex justify-between items-center">
-                                <div>
+                html += containers.map((container) => {
+                    const sheetsInContainer = sheetsByContainer[container.id] || [];
+                    if (searchTerm !== '' && sheetsInContainer.length === 0) return '';
+                    const isExpanded = expansionState.containers.includes(container.id);
+                    return `
+                        <div class="material-card ${isArchivedView ? 'archived-item' : ''}" style="background-color: ${isArchivedView ? '#f5f5f5' : (container.color || '#EFF6FF')}">
+                            <div class="p-4 cursor-pointer" onclick="window.app.toggleExpansion('container', '${container.id}')">
+                                <div class="flex justify-between items-center">
                                     <div class="flex items-center gap-2">
-                                        <span class="material-icons text-gray-700">folder</span>
+                                        <span class="material-icons text-gray-700">${isArchivedView ? 'inventory_2' : 'folder'}</span>
                                         <h3 class="text-xl font-medium">${container.name}</h3>
                                     </div>
-                                    ${container.description ? `<p class="text-sm text-gray-600 mt-1 ml-8">${container.description}</p>` : ''}
-                                </div>
-                                <div class="flex items-center">
-                                    <button ${index === 0 ? 'disabled' : ''} onclick="event.stopPropagation(); window.app.reorderEntity('container', '${container.id}', 'up')" class="material-button-text p-2 rounded-full disabled:opacity-25"><span class="material-icons text-lg">arrow_upward</span></button>
-                                    <button ${index === allContainers.length - 1 ? 'disabled' : ''} onclick="event.stopPropagation(); window.app.reorderEntity('container', '${container.id}', 'down')" class="material-button-text p-2 rounded-full disabled:opacity-25"><span class="material-icons text-lg">arrow_downward</span></button>
-                                    <button onclick="event.stopPropagation(); window.app.openContainerModal('${container.id}')" class="material-button-text p-2 rounded-full"><span class="material-icons text-lg">edit</span></button>
-                                    <button onclick="event.stopPropagation(); window.app.deleteContainer('${container.id}')" class="material-button-text p-2 rounded-full"><span class="material-icons text-lg">delete</span></button>
-                                    <span id="icon-container-${container.id}" class="material-icons transition-transform transform ${isExpanded ? 'rotate-180' : ''}">expand_more</span>
+                                    <div class="flex items-center">
+                                        ${!isArchivedView ? `
+                                            <button onclick="event.stopPropagation(); window.app.reorderEntity('container', '${container.id}', 'up')" class="material-button-text p-2 rounded-full disabled:opacity-25"><span class="material-icons text-lg">arrow_upward</span></button>
+                                            <button onclick="event.stopPropagation(); window.app.reorderEntity('container', '${container.id}', 'down')" class="material-button-text p-2 rounded-full disabled:opacity-25"><span class="material-icons text-lg">arrow_downward</span></button>
+                                        ` : ''}
+                                        <button onclick="event.stopPropagation(); window.app.openContainerActionsMenu('${container.id}', ${isArchivedView})" class="material-button-text p-2 rounded-full"><span class="material-icons text-lg">more_vert</span></button>
+                                        <span id="icon-container-${container.id}" class="material-icons transition-transform transform ${isExpanded ? 'rotate-180' : ''}">expand_more</span>
+                                    </div>
                                 </div>
                             </div>
+                            <div id="content-container-${container.id}" style="display: ${isExpanded ? 'block' : 'none'}" class="border-t px-2 py-2 md:px-4 md:py-4 space-y-3">
+                               ${sheetsInContainer.length > 0 ? sheetsInContainer.map((sheet, sheetIndex) => renderSingleSheet(sheet, expansionState.sheets.includes(sheet.id), sheetIndex, sheetsInContainer.length, isArchivedView)).join('') : '<p class="text-sm text-center text-gray-500 py-2">Nessuna scheda in questo contenitore.</p>'}
+                            </div>
                         </div>
-                        <div id="content-container-${container.id}" style="display: ${isExpanded ? 'block' : 'none'}" class="border-t px-2 py-2 md:px-4 md:py-4 space-y-3">
-                           ${sheets.length > 0 ? sheets.map((sheet, sheetIndex) => renderSingleSheet(sheet, expansionState.sheets.includes(sheet.id), sheetIndex, sheets.length)).join('') : '<p class="text-sm text-center text-gray-500 py-2">Nessuna scheda in questo contenitore.</p>'}
-                        </div>
-                    </div>
-                `;
-            }).join('');
+                    `;
+                }).join('');
 
-            const unassignedSheets = sheetsByContainer[null] || [];
-            if (unassignedSheets.length > 0) {
-                 html += `
-                    <div class="mt-6">
-                        <h4 class="text-gray-500 font-medium mb-2 ml-1">Schede non assegnate</h4>
-                        <div class="space-y-4">
-                           ${unassignedSheets.map((sheet, sheetIndex) => renderSingleSheet(sheet, expansionState.sheets.includes(sheet.id), sheetIndex, unassignedSheets.length)).join('')}
-                        </div>
-                    </div>`;
-            }
+                const unassignedSheets = sheetsByContainer[null] || [];
+                if (unassignedSheets.length > 0) {
+                     html += `
+                        <div class="mt-6">
+                            <h4 class="text-gray-500 font-medium mb-2 ml-1">Schede non assegnate</h4>
+                            <div class="space-y-4">
+                               ${unassignedSheets.map((sheet, sheetIndex) => renderSingleSheet(sheet, expansionState.sheets.includes(sheet.id), sheetIndex, unassignedSheets.length, isArchivedView)).join('')}
+                            </div>
+                        </div>`;
+                }
+                return html;
+            };
+
+            const activeHtml = renderGroup(activeContainers, activeSheets, false);
+            const archivedHtml = renderGroup(archivedContainers, archivedSheets, true);
             
-            list.innerHTML = html;
+            listContainer.innerHTML = activeHtml || (searchTerm === '' ? `<p class="text-center text-gray-500">Nessuna scheda o contenitore. Inizia creando una scheda o usa il ✨ generatore AI.</p>`: `<p class="text-center text-gray-500">Nessun risultato per la ricerca.</p>`);
+            archivedListContainer.innerHTML = archivedHtml || `<p class="text-center text-gray-500">Nessun elemento archiviato.</p>`;
+            
+            archivedContainer.classList.toggle('hidden', !state.showArchived);
         }
 
-        function renderSingleSheet(sheet, isExpanded, index, totalInList) {
+        function renderSingleSheet(sheet, isExpanded, index, totalInList, isArchivedView = false) {
              return `
-                <div class="material-card !shadow-sm hover:!shadow-md">
+                <div class="material-card !shadow-sm hover:!shadow-md ${isArchivedView ? 'archived-item' : ''}">
                     <div class="p-4 cursor-pointer" onclick="window.app.toggleExpansion('sheet', '${sheet.id}')">
                          <div class="flex justify-between items-center">
                             <div class="flex items-center">
-                                <div class="flex flex-col mr-2">
+                                ${!isArchivedView ? `<div class="flex flex-col mr-2">
                                     <button ${index === 0 ? 'disabled' : ''} onclick="event.stopPropagation(); window.app.reorderEntity('sheet', '${sheet.id}', 'up')" class="material-button-text !p-1 !min-w-0 h-6 rounded-full disabled:opacity-25"><span class="material-icons text-lg">arrow_drop_up</span></button>
                                     <button ${index === totalInList - 1 ? 'disabled' : ''} onclick="event.stopPropagation(); window.app.reorderEntity('sheet', '${sheet.id}', 'down')" class="material-button-text !p-1 !min-w-0 h-6 rounded-full disabled:opacity-25"><span class="material-icons text-lg">arrow_drop_down</span></button>
-                                </div>
+                                </div>` : `<span class="material-icons mr-2">${isArchivedView ? 'inventory_2' : 'assignment'}</span>`}
                                 <div>
                                     <h3 class="text-lg font-medium">${sheet.name}</h3>
                                     <p class="text-sm text-gray-500">${sheet.description || ''}</p>
                                 </div>
                             </div>
-                            <span id="icon-sheet-${sheet.id}" class="material-icons transition-transform transform ${isExpanded ? 'rotate-180' : ''}">expand_more</span>
+                            <div class="flex items-center">
+                               <button onclick="event.stopPropagation(); window.app.openSheetActionsMenu('${sheet.id}', ${isArchivedView})" class="material-button-text p-2 rounded-full"><span class="material-icons text-lg">more_vert</span></button>
+                               <span id="icon-sheet-${sheet.id}" class="material-icons transition-transform transform ${isExpanded ? 'rotate-180' : ''}">expand_more</span>
+                            </div>
                          </div>
                     </div>
                     <div id="content-sheet-${sheet.id}" style="display: ${isExpanded ? 'block' : 'none'}" class="border-t">
                         <div class="p-4 space-y-3">
                             <div class="flex justify-between items-center flex-wrap gap-2">
                                 <p class="text-sm font-medium">Note: <span class="font-normal">${sheet.notes || 'Nessuna nota'}</span></p>
-                                <div class="flex gap-2 flex-wrap">
-                                    <button onclick="window.app.openSheetModal('${sheet.id}')" class="material-button-text p-2 rounded-full" title="Modifica Scheda"><span class="material-icons text-lg">edit</span></button>
-                                    <button onclick="window.app.deleteSheet('${sheet.id}')" class="material-button-text p-2 rounded-full" title="Elimina Scheda"><span class="material-icons text-lg">delete</span></button>
+                                ${!isArchivedView ? `<div class="flex gap-2 flex-wrap">
                                     <button onclick="window.app.addItemsToSheet('${sheet.id}')" class="material-button-outlined text-sm px-3 py-1">Aggiungi Elementi</button>
                                     <button onclick="window.app.resetSheetDoneStatus('${sheet.id}')" class="material-button-text p-2 rounded-full" title="Segna tutti come 'da fare'"><span class="material-icons text-lg">refresh</span></button>
-                                </div>
+                                </div>` : ''}
                             </div>
                             <div id="sheet-items-${sheet.id}" class="sheet-items-list">
                                 ${renderSheetItems(sheet.id)}
@@ -955,7 +980,7 @@
             <div class="relative">
                 <div class="variant-carousel-container" id="${carouselId}" data-current-index="0">
                     <div class="variant-carousel-track">
-                        ${exerciseIds.map((exId, index) => {
+                        ${exerciseIds.map((exId) => {
                             const exercise = state.exercises.find(e => e.id === exId);
                             if (!exercise) return '';
                             const latestHistory = state.history
@@ -1004,7 +1029,7 @@
                 <div class="variant-dots flex-grow justify-center">
                     ${exerciseIds.map((_, index) => `<div class="variant-dot ${index === 0 ? 'active' : ''}" data-index="${index}"></div>`).join('')}
                 </div>
-                <button onclick="window.app.openAddVariantModal('${sheetId}', '${itemId}', '${exerciseIds[0]}')" class="material-button-outlined text-xs px-2 py-1">+ Alternativa</button>
+                ${!isWorkout ? `<button onclick="window.app.openAddVariantModal('${sheetId}', '${itemId}', '${exerciseIds[0]}')" class="material-button-outlined text-xs px-2 py-1">+ Alternativa</button>` : ''}
             </div>
             `;
         }
@@ -1062,16 +1087,37 @@
         function getComparisonArrow(newValueJSON, oldValueJSON) {
             if (!newValueJSON || !oldValueJSON) return '';
             try {
-                const currentSets = JSON.parse(newValueJSON);
-                const previousSets = JSON.parse(oldValueJSON);
-                const currentVolume = (currentSets[0]?.val1 || 0) * (currentSets[0]?.val2 || 1);
-                const previousVolume = (previousSets[0]?.val1 || 0) * (previousSets[0]?.val2 || 1);
-                if (currentVolume > previousVolume) return '<span class="material-icons text-green-500 text-sm align-middle">arrow_upward</span>';
-                if (currentVolume < previousVolume) return '<span class="material-icons text-red-500 text-sm align-middle">arrow_downward</span>';
+                const currentVolume = calculateVolumeFromParam(newValueJSON);
+                const previousVolume = calculateVolumeFromParam(oldValueJSON);
+
+                if (currentVolume > 0 && previousVolume > 0) {
+                    if (currentVolume > previousVolume) return '<span class="material-icons text-green-500 text-sm align-middle">arrow_upward</span>';
+                    if (currentVolume < previousVolume) return '<span class="material-icons text-red-500 text-sm align-middle">arrow_downward</span>';
+                }
             } catch (e) { /* ignore */ }
             return '';
         }
         
+        function calculateVolumeFromParam(jsonString) {
+            if (!jsonString) return 0;
+            try {
+                const sets = JSON.parse(jsonString);
+                if (!Array.isArray(sets) || sets.length === 0) return 0;
+                
+                return sets.reduce((totalVolume, set) => {
+                    const values = Object.values(set).map(v => parseFloat(v)).filter(v => !isNaN(v));
+                    if (values.length >= 2) {
+                        return totalVolume + (values[0] * values[1]);
+                    } else if (values.length === 1) {
+                        return totalVolume + values[0];
+                    }
+                    return totalVolume;
+                }, 0);
+            } catch (e) {
+                return 0;
+            }
+        }
+
         function renderCompoundParam(jsonString) {
             if (!jsonString) return 'N/D';
             try {
@@ -1099,7 +1145,8 @@
             const okButton = document.getElementById('confirm-ok');
             const cancelButton = document.getElementById('confirm-cancel');
 
-            if (title.toLowerCase().includes('logout') || title.toLowerCase().includes('eliminazione') || title.toLowerCase().includes('termina')) {
+            okButton.classList.remove('bg-red-600', 'hover:bg-red-700');
+            if (title.toLowerCase().includes('logout') || title.toLowerCase().includes('elimina') || title.toLowerCase().includes('termina')) {
                  okButton.classList.add('bg-red-600', 'hover:bg-red-700');
             }
 
@@ -1213,6 +1260,10 @@
         function closeModal() {
             modalContainer.classList.add('hidden');
             modalContainer.innerHTML = '';
+            if (chartInstance) {
+                chartInstance.destroy();
+                chartInstance = null;
+            }
             if(!state.isWorkoutModeActive) document.body.classList.remove('overflow-hidden');
         }
 
@@ -1220,7 +1271,8 @@
             const category = id ? state.categories.find(c => c.id === id) : null;
             const title = category ? 'Modifica Categoria' : 'Nuova Categoria';
             modalContainer.innerHTML = `
-                <div class="modal-content p-6 overflow-y-auto">
+                <div class="modal-content p-6 overflow-y-auto relative" onclick="event.stopPropagation()">
+                    <button onclick="window.app.closeModal()" class="absolute top-4 right-4 z-10 p-2 rounded-full material-button-text hover:bg-gray-200 !min-w-0"><span class="material-icons">close</span></button>
                     <h3 class="text-xl font-medium mb-6">${title}</h3>
                     <div class="space-y-4">
                         <input type="text" id="category-name" placeholder="Nome Categoria" class="input-field" value="${category?.name || ''}">
@@ -1246,7 +1298,8 @@
             }
             
             modalContainer.innerHTML = `
-                <div class="modal-content flex flex-col">
+                <div class="modal-content flex flex-col relative" onclick="event.stopPropagation()">
+                    <button onclick="window.app.closeModal()" class="absolute top-4 right-4 z-10 p-2 rounded-full material-button-text hover:bg-gray-200 !min-w-0"><span class="material-icons">close</span></button>
                     <div class="p-6 border-b">
                         <h3 class="text-xl font-medium">${title}</h3>
                         ${subtitle ? `<p class="text-sm text-gray-500">${subtitle}</p>`:''}
@@ -1286,13 +1339,15 @@
                         });
                         document.getElementById(`tab-${tab}`)?.classList.add('active');
                         document.getElementById(`tab-content-${tab}`)?.classList.remove('hidden');
+                        if (tab === 'progress' && id) {
+                            renderExerciseProgressTab(exercise);
+                        }
                     };
                 }
             });
 
             renderExerciseInfoTab(exercise);
             if (id) {
-                renderExerciseProgressTab(exercise);
                 renderExerciseDiaryTab(exercise);
                 renderExerciseAiTab(exercise);
             }
@@ -1306,7 +1361,8 @@
              const sheet = id ? state.sheets.find(s => s.id === id) : null;
              const title = sheet ? 'Modifica Scheda' : 'Nuova Scheda';
              modalContainer.innerHTML = `
-                <div class="modal-content p-6 overflow-y-auto">
+                <div class="modal-content p-6 overflow-y-auto relative" onclick="event.stopPropagation()">
+                    <button onclick="window.app.closeModal()" class="absolute top-4 right-4 z-10 p-2 rounded-full material-button-text hover:bg-gray-200 !min-w-0"><span class="material-icons">close</span></button>
                     <h3 class="text-xl font-medium mb-6">${title}</h3>
                     <div class="space-y-4">
                         <input type="text" id="sheet-name" placeholder="Nome Scheda" class="input-field" value="${sheet?.name || ''}">
@@ -1316,7 +1372,7 @@
                             <label for="sheet-container" class="text-sm font-medium text-gray-700">Contenitore (opzionale)</label>
                             <select id="sheet-container" class="input-field mt-1">
                                 <option value="">Nessun contenitore</option>
-                                ${state.sheetContainers.map(c => `<option value="${c.id}" ${sheet?.containerId === c.id ? 'selected' : ''}>${c.name}</option>`).join('')}
+                                ${state.sheetContainers.filter(c => !c.isArchived).map(c => `<option value="${c.id}" ${sheet?.containerId === c.id ? 'selected' : ''}>${c.name}</option>`).join('')}
                             </select>
                         </div>
 
@@ -1336,7 +1392,8 @@
             const container = id ? state.sheetContainers.find(c => c.id === id) : null;
             const title = container ? 'Modifica Contenitore' : 'Nuovo Contenitore';
             modalContainer.innerHTML = `
-                <div class="modal-content p-6 overflow-y-auto">
+                <div class="modal-content p-6 overflow-y-auto relative" onclick="event.stopPropagation()">
+                    <button onclick="window.app.closeModal()" class="absolute top-4 right-4 z-10 p-2 rounded-full material-button-text hover:bg-gray-200 !min-w-0"><span class="material-icons">close</span></button>
                     <h3 class="text-xl font-medium mb-6">${title}</h3>
                     <div class="space-y-4">
                         <input type="text" id="container-name" placeholder="Nome Contenitore" class="input-field" value="${container?.name || ''}">
@@ -1364,7 +1421,8 @@
             const exerciseIdToUse = historyItem?.exerciseId || exerciseId;
             if (!exerciseIdToUse) {
                 modalContainer.innerHTML = `
-                    <div class="modal-content p-6 overflow-y-auto">
+                    <div class="modal-content p-6 overflow-y-auto relative" onclick="event.stopPropagation()">
+                        <button onclick="window.app.closeModal()" class="absolute top-4 right-4 z-10 p-2 rounded-full material-button-text hover:bg-gray-200 !min-w-0"><span class="material-icons">close</span></button>
                         <h3 class="text-xl font-medium mb-4">Scegli un Esercizio</h3>
                         <select id="history-exercise-select" class="input-field">
                             <option value="">Seleziona...</option>
@@ -1396,7 +1454,8 @@
             const title = historyId ? 'Modifica Documentazione' : 'Aggiungi Documentazione';
             
             modalContainer.innerHTML = `
-                 <div class="modal-content p-6 overflow-y-auto">
+                 <div class="modal-content p-6 overflow-y-auto relative" onclick="event.stopPropagation()">
+                    <button onclick="window.app.closeModal()" class="absolute top-4 right-4 z-10 p-2 rounded-full material-button-text hover:bg-gray-200 !min-w-0"><span class="material-icons">close</span></button>
                     <h3 class="text-xl font-medium mb-2">${title}</h3>
                     <p class="mb-4 text-gray-600">per <strong>${exercise.name}</strong></p>
                     
@@ -1419,16 +1478,16 @@
                                     <div class="p-2 border rounded" data-param-name="${paramName}">
                                         <label class="font-medium">${paramName}</label>
                                         <div class="space-y-2 mt-1" id="sets-for-${paramId}">
-                                            ${sets.map((set, index) => {
+                                            ${sets.map((set) => {
                                                 const fields = Object.values(set).filter(v => v !== null && v !== '');
-                                                let setHtml = `<div class="flex gap-1.5 items-center" data-set-index="${index}">`;
+                                                let setHtml = `<div class="flex gap-1.5 items-center">`;
 
                                                 if (fields.length === 0) {
                                                     setHtml += `<input type="text" placeholder="" class="input-field !p-2 flex-1" value="">`;
                                                 } else {
                                                     setHtml += Object.entries(set)
                                                         .filter(([k, v]) => v !== null)
-                                                        .map(([key, value]) => `<input type="text" placeholder="" class="input-field !p-2 flex-1" value="${value || ''}">`).join('');
+                                                        .map(([, value]) => `<input type="text" placeholder="" class="input-field !p-2 flex-1" value="${value || ''}">`).join('');
                                                 }
 
                                                 setHtml += `<button onclick="window.app.addInputFieldToSet(this)" class="material-button-text p-2 rounded-full !min-w-0"><span class="material-icons">add</span></button>
@@ -1511,7 +1570,8 @@
             }
             
             modalContainer.innerHTML = `
-                <div class="modal-content p-6 overflow-y-auto">
+                <div class="modal-content p-6 overflow-y-auto relative" onclick="event.stopPropagation()">
+                    <button onclick="window.app.closeModal()" class="absolute top-4 right-4 z-10 p-2 rounded-full material-button-text hover:bg-gray-200 !min-w-0"><span class="material-icons">close</span></button>
                     <h3 class="text-xl font-medium mb-4">Aggiungi Elementi alla Scheda</h3>
                     <div class="flex gap-2 mb-4">
                         <button id="add-item-type-exercise" class="tab-button active">Esercizi</button>
@@ -1632,24 +1692,115 @@
         
         function renderExerciseProgressTab(exercise) {
             const container = document.getElementById('tab-content-progress');
-            const exerciseHistory = state.history.filter(h => h.exerciseId === exercise.id && h.params && Object.keys(h.params).length > 0)
-                                        .sort((a,b) => b.timestamp.seconds - a.timestamp.seconds);
+            if (!container) return;
+
+            const exerciseHistoryAsc = state.history
+                .filter(h => h.exerciseId === exercise.id && h.params && Object.keys(h.params).length > 0)
+                .sort((a, b) => a.timestamp.seconds - b.timestamp.seconds);
             
-            if (exerciseHistory.length === 0) {
+            if (exerciseHistoryAsc.length === 0) {
                 container.innerHTML = `<p class="text-center text-gray-500">Nessun progresso registrato per questo esercizio.</p>`;
                 return;
             }
 
+            const parameters = [...new Set(exerciseHistoryAsc.flatMap(h => Object.keys(h.params)))];
+            const volumeParam = "Volume Totale (Kg)";
+            if (exercise.parameters && exercise.parameters.length >= 2) {
+                parameters.push(volumeParam);
+            }
+            
+            const exerciseHistoryDesc = [...exerciseHistoryAsc].reverse();
+
             container.innerHTML = `
-                <div class="space-y-2 max-h-80 overflow-y-auto">
-                    ${exerciseHistory.map(h => `
-                        <div class="text-sm p-2 bg-gray-50 rounded">
-                            <p class="font-bold">${new Date(h.timestamp.seconds * 1000).toLocaleString('it-IT')}</p>
-                            ${Object.entries(h.params).map(([key, p]) => `<p><strong>${key}:</strong> ${renderCompoundParam(p.value)}</p>`).join('')}
-                        </div>
-                    `).join('')}
+                <div class="mb-4">
+                    <label for="progress-param-select" class="text-sm font-medium">Visualizza progresso per:</label>
+                    <select id="progress-param-select" class="input-field mt-1">
+                        ${parameters.map(p => `<option value="${p}">${p}</option>`).join('')}
+                    </select>
                 </div>
-            `;
+                <div>
+                    <canvas id="progress-chart" class="mb-6"></canvas>
+                </div>
+                <div>
+                    <h4 class="font-medium text-lg border-t pt-4 mb-2">Storico Dettagliato</h4>
+                    <div class="space-y-2 max-h-60 overflow-y-auto">
+                        ${exerciseHistoryDesc.map(h => `
+                            <div class="text-sm p-2 bg-gray-50 rounded">
+                                <p class="font-bold">${new Date(h.timestamp.seconds * 1000).toLocaleString('it-IT')}</p>
+                                ${Object.entries(h.params).map(([key, p]) => `
+                                    <p>
+                                        <strong>${key}:</strong> ${renderCompoundParam(p.value)}
+                                        ${p.previousValue ? `
+                                            <span class="text-xs text-gray-500 ml-2">
+                                                (prima: ${renderCompoundParam(p.previousValue)})
+                                                ${getComparisonArrow(p.value, p.previousValue)}
+                                            </span>
+                                        ` : ''}
+                                    </p>`).join('')}
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>`;
+            
+            const select = document.getElementById('progress-param-select');
+            
+            const drawChart = () => {
+                const selectedParam = select.value;
+                const labels = exerciseHistoryAsc.map(h => new Date(h.timestamp.seconds * 1000));
+                
+                let data;
+                if (selectedParam === volumeParam) {
+                    data = exerciseHistoryAsc.map(h => {
+                        let totalVolume = 0;
+                        Object.values(h.params).forEach(p => {
+                            totalVolume += calculateVolumeFromParam(p.value);
+                        });
+                        return totalVolume > 0 ? totalVolume : null;
+                    });
+                } else {
+                    data = exerciseHistoryAsc.map(h => {
+                        const paramData = h.params[selectedParam];
+                        if (!paramData) return null;
+                        return calculateVolumeFromParam(paramData.value);
+                    });
+                }
+                
+                const ctx = document.getElementById('progress-chart').getContext('2d');
+                if (chartInstance) chartInstance.destroy();
+                
+                chartInstance = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: selectedParam,
+                            data: data,
+                            borderColor: '#6750A4',
+                            backgroundColor: 'rgba(103, 80, 164, 0.1)',
+                            fill: true,
+                            tension: 0.1,
+                            spanGaps: true,
+                            pointRadius: 4,
+                            pointBackgroundColor: '#6750A4',
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        scales: {
+                            x: {
+                                type: 'time',
+                                time: { unit: 'day', tooltipFormat: 'dd MMM yyyy', displayFormats: { day: 'dd/MM' } },
+                                title: { display: false }
+                            },
+                            y: { beginAtZero: false, title: { display: true, text: 'Valore' } }
+                        },
+                        plugins: { legend: { display: false } }
+                    }
+                });
+            };
+
+            select.addEventListener('change', drawChart);
+            drawChart();
         }
 
         function renderExerciseDiaryTab(exercise) {
@@ -1680,8 +1831,6 @@
             `;
         }
         
-        // --- FUNZIONI GEMINI API ---
-        
         function renderExerciseAiTab(exercise) {
             const container = document.getElementById('tab-content-ai');
             if (exercise.aiDetails) {
@@ -1702,12 +1851,14 @@
             document.getElementById('get-ai-info-btn').onclick = () => getAiExerciseInfo(exercise);
         }
 
+        // --- FUNZIONI GEMINI API ---
+        
         async function callGeminiAPI(prompt, isJson = false) {
             const apiKey = "AIzaSyDQsDl_3T9b9ludO4DCiRvifzPYvNVM9t8"; 
 
             if (apiKey === "INSERISCI_QUI_LA_TUA_CHIAVE_API") {
                  showToast("Chiave API di Gemini non configurata.", "error");
-                 console.error("ERRORE: La chiave API di Gemini non è stata impostata. Inseriscila nella funzione 'callGeminiAPI'.");
+                 console.error("ERRORE: La chiave API di Gemini non è stata impostata.");
                  return null;
             }
             
@@ -1770,7 +1921,8 @@
 
         function openAiGeneratorModal() {
              modalContainer.innerHTML = `
-                <div class="modal-content p-6 overflow-y-auto">
+                <div class="modal-content p-6 overflow-y-auto relative" onclick="event.stopPropagation()">
+                    <button onclick="window.app.closeModal()" class="absolute top-4 right-4 z-10 p-2 rounded-full material-button-text hover:bg-gray-200 !min-w-0"><span class="material-icons">close</span></button>
                     <h3 class="text-xl font-medium mb-1">✨ Generatore di Schede AI</h3>
                     <p class="text-sm text-gray-500 mb-6">Descrivi il tuo obiettivo e l'AI creerà un piano per te.</p>
                     <div id="ai-generator-form" class="space-y-4">
@@ -1879,6 +2031,7 @@
                         notes: plan.notes || '',
                         containerId: null,
                         order: maxOrder,
+                        isArchived: false,
                         createdAt: serverTimestamp(),
                         updatedAt: serverTimestamp()
                     };
@@ -1889,7 +2042,7 @@
                     for (const item of day.items) {
                         const exercise = state.exercises.find(ex => ex.name.toLowerCase() === item.exerciseName?.toLowerCase());
                         if (item.type === 'exercise' && !exercise) {
-                            console.warn(`AI ha suggerito l'esercizio "${item.exerciseName}" non trovato nel database. Saltato.`);
+                            console.warn(`AI ha suggerito l'esercizio "${item.exerciseName}" non trovato. Saltato.`);
                             continue;
                         }
 
@@ -1902,7 +2055,7 @@
                         
                         if (item.type === 'exercise') {
                             itemData.type = 'exercise';
-                            itemData.exerciseIds = [exercise.id]; // Inizializza con l'array
+                            itemData.exerciseIds = [exercise.id];
                         } else {
                             Object.assign(itemData, item);
                         }
@@ -1917,7 +2070,7 @@
                 showToast("Piano di allenamento generato con successo!", "success");
 
             } catch(e) {
-                console.error("Errore durante il parsing o salvataggio del piano AI:", e);
+                console.error("Errore parsing o salvataggio piano AI:", e);
                 showToast("L'AI ha restituito un formato non valido. Riprova.", "error");
                 document.getElementById('ai-generator-form').classList.remove('hidden');
                 document.getElementById('generate-ai-sheet-btn').classList.remove('hidden');
@@ -1934,7 +2087,7 @@
                 const docRef = doc(db, `/users/${userId}/exercises`, exerciseId);
                 await updateDoc(docRef, { aiDetails: details });
             } catch (e) {
-                console.error("Errore durante il salvataggio dei dettagli AI:", e);
+                console.error("Errore salvataggio dettagli AI:", e);
             }
         }
         
@@ -2129,8 +2282,6 @@
                     await addDoc(collection(db, collectionPath), data);
                 }
                 await setDoc(doc(db, `/users/${userId}/exercises`, exerciseId), { updatedAt: serverTimestamp() }, { merge: true });
-
-                // ** NUOVO: Aggiorna la vista se si è in modalità allenamento **
                 if (state.isWorkoutModeActive) {
                     renderWorkoutStep();
                 }
@@ -2177,6 +2328,7 @@
                     const q = query(collection(db, collectionPath));
                     const snapshot = await getDocs(q);
                     data.order = snapshot.size;
+                    data.isArchived = false;
                     data.createdAt = serverTimestamp();
                     await addDoc(collection(db, collectionPath), data);
                 }
@@ -2191,7 +2343,7 @@
         async function deleteSheet(id) {
             const { userId } = state;
             if (!userId) return showToast("Utente non autenticato.", 'error');
-             showConfirm("Conferma Eliminazione", "Sei sicuro di voler eliminare questa scheda e tutti gli elementi al suo interno? (Azione non reversibile)", async () => {
+             showConfirm("Elimina Definitivamente", "Sei sicuro di voler eliminare questa scheda e tutti gli elementi al suo interno? (Azione non reversibile)", async () => {
                 try {
                     const collectionPath = `/users/${userId}/workoutSheets/${id}/items`;
                     const itemsSnapshot = await getDocs(collection(db, collectionPath));
@@ -2224,6 +2376,7 @@
                     const q = query(collection(db, collectionPath));
                     const snapshot = await getDocs(q);
                     data.order = snapshot.size;
+                    data.isArchived = false;
                     data.createdAt = serverTimestamp();
                     await addDoc(collection(db, collectionPath), data);
                 }
@@ -2240,7 +2393,7 @@
             if (!userId) return showToast("Utente non autenticato.", 'error');
             const container = state.sheetContainers.find(c => c.id === id);
             if (!container) return;
-             showConfirm("Conferma Eliminazione", `Sei sicuro di voler eliminare il contenitore "<strong>${container.name}</strong>"? Le schede al suo interno non verranno eliminate, ma saranno spostate in "non assegnate".`, async () => {
+             showConfirm("Elimina Definitivamente", `Sei sicuro di voler eliminare il contenitore "<strong>${container.name}</strong>"? Le schede al suo interno non verranno eliminate, ma saranno spostate in "non assegnate". Questa azione è irreversibile.`, async () => {
                  try {
                     const batch = writeBatch(db);
                     const sheetsInContainer = state.sheets.filter(s => s.containerId === id);
@@ -2358,16 +2511,16 @@
             let collectionPath;
             
             if (type === 'container') {
-                list = [...state.sheetContainers];
+                list = [...state.sheetContainers].filter(c => !c.isArchived);
                 collectionPath = `/users/${userId}/sheetContainers`;
             } else if (type === 'sheet') {
                 const currentSheet = state.sheets.find(s => s.id === entityId);
                 if (!currentSheet) return;
 
                 if (currentSheet.containerId) {
-                    list = state.sheets.filter(s => s.containerId === currentSheet.containerId);
+                    list = state.sheets.filter(s => !s.isArchived && s.containerId === currentSheet.containerId);
                 } else {
-                    list = state.sheets.filter(s => !s.containerId);
+                    list = state.sheets.filter(s => !s.isArchived && !s.containerId);
                 }
                 collectionPath = `/users/${userId}/workoutSheets`;
             } else {
@@ -2471,7 +2624,8 @@
             ` : '';
             
             modalContainer.innerHTML = `
-                <div class="modal-content p-6 overflow-y-auto">
+                <div class="modal-content p-6 overflow-y-auto relative" onclick="event.stopPropagation()">
+                    <button onclick="window.app.closeModal()" class="absolute top-4 right-4 z-10 p-2 rounded-full material-button-text hover:bg-gray-200 !min-w-0"><span class="material-icons">close</span></button>
                     <h3 class="text-xl font-medium mb-4">Azioni Elemento</h3>
                     <div class="space-y-2">
                         ${editAction}
@@ -2551,7 +2705,8 @@
             }
             
             modalContainer.innerHTML = `
-                <div class="modal-content p-6">
+                <div class="modal-content p-6 relative" onclick="event.stopPropagation()">
+                    <button onclick="window.app.closeModal()" class="absolute top-4 right-4 z-10 p-2 rounded-full material-button-text hover:bg-gray-200 !min-w-0"><span class="material-icons">close</span></button>
                     ${content}
                     <div class="flex justify-end gap-2 mt-6">
                         <button onclick="window.app.closeModal()" class="material-button material-button-text">Annulla</button>
@@ -2639,21 +2794,14 @@
         
         // --- LOGICA MODALITÀ ALLENAMENTO ---
         
-        // ** NUOVO: Funzioni per gestire il Wake Lock **
         const acquireWakeLock = async () => {
             if ('wakeLock' in navigator) {
                 try {
                     wakeLock = await navigator.wakeLock.request('screen');
-                    wakeLock.addEventListener('release', () => {
-                        console.log('Wake Lock was released');
-                    });
+                    wakeLock.addEventListener('release', () => { console.log('Wake Lock was released'); });
                     console.log('Wake Lock is active');
-                } catch (err) {
-                    console.error(`${err.name}, ${err.message}`);
-                }
-            } else {
-                console.log('Wake Lock API not supported. The screen may turn off.');
-            }
+                } catch (err) { console.error(`${err.name}, ${err.message}`); }
+            } else { console.log('Wake Lock API not supported.'); }
         };
 
         const releaseWakeLock = async () => {
@@ -2665,12 +2813,15 @@
         };
 
         function openWorkoutSelectionModal() {
-            const hasUnassigned = state.sheets.some(s => !s.containerId);
+            const hasUnassigned = state.sheets.some(s => !s.isArchived && !s.containerId);
+            const activeContainers = state.sheetContainers.filter(c => !c.isArchived);
+
             modalContainer.innerHTML = `
-                <div class="modal-content p-6">
+                <div class="modal-content p-6 relative" onclick="event.stopPropagation()">
+                    <button onclick="window.app.closeModal()" class="absolute top-4 right-4 z-10 p-2 rounded-full material-button-text hover:bg-gray-200 !min-w-0"><span class="material-icons">close</span></button>
                     <h3 class="text-xl font-medium mb-4">Scegli un Contenitore</h3>
                      <div class="space-y-2 max-h-80 overflow-y-auto">
-                        ${state.sheetContainers.map(c => `
+                        ${activeContainers.map(c => `
                             <div onclick="window.app.renderWorkoutSheetSelection('${c.id}')" class="p-4 rounded-lg hover:bg-gray-100 cursor-pointer border" style="border-left: 4px solid ${c.color || '#6750A4'}">
                                 ${c.name}
                             </div>
@@ -2691,10 +2842,11 @@
         }
 
         function renderWorkoutSheetSelection(containerId) {
-            const sheets = state.sheets.filter(s => s.containerId === containerId);
+            const sheets = state.sheets.filter(s => !s.isArchived && s.containerId === containerId);
             const content = document.querySelector('#modal-container .modal-content');
             if(!content) return;
             content.innerHTML = `
+                <button onclick="window.app.closeModal()" class="absolute top-4 right-4 z-10 p-2 rounded-full material-button-text hover:bg-gray-200 !min-w-0"><span class="material-icons">close</span></button>
                 <h3 class="text-xl font-medium mb-4">Scegli una Scheda</h3>
                 <div class="space-y-2 max-h-80 overflow-y-auto">
                     ${sheets.length > 0 ? sheets.map(s => `
@@ -2721,7 +2873,6 @@
 
             if (items.length === 0) return showToast("Questa scheda è vuota!", 'error');
             
-            // ** NUOVO: Attiva il Wake Lock **
             await acquireWakeLock();
 
             state.isWorkoutModeActive = true;
@@ -2831,7 +2982,7 @@
                 const workoutData = { ...state.workout, endTime: new Date() };
                 await saveWorkoutSession(workoutData);
                 close();
-                exitWorkoutMode(true);
+                await showWorkoutSummary(workoutData);
             };
              document.getElementById('custom-discard').onclick = () => {
                 close();
@@ -2849,7 +3000,7 @@
                 finalBtn.textContent = 'Salvataggio...';
             }
             await saveWorkoutSession(workoutData);
-            exitWorkoutMode(true);
+            await showWorkoutSummary(workoutData);
         }
         
         async function saveWorkoutSession(workoutData) {
@@ -2878,7 +3029,6 @@
             stopGlobalTimer();
             stopAllTimers();
             
-            // ** NUOVO: Rilascia il Wake Lock **
             await releaseWakeLock();
 
             state.isWorkoutModeActive = false;
@@ -2905,7 +3055,6 @@
             document.getElementById('workout-global-timer').textContent = formatGlobalTime(0);
             
             state.workout.globalTimerIntervalId = setInterval(() => {
-                // ** NUOVO: Calcolo basato sul tempo reale trascorso **
                 if (state.workout && state.workout.startTime) {
                     const elapsed = Math.floor((Date.now() - state.workout.startTime.getTime()) / 1000);
                     state.workout.elapsedSeconds = elapsed;
@@ -2921,14 +3070,15 @@
             }
         }
         
-        // --- INIZIO BLOCCO NUOVE FUNZIONI (VARIANTS) ---
+        // --- LOGICA VARIANTI/ALTERNATIVE ---
 
         function openAddVariantModal(sheetId, itemId, primaryExerciseId) {
             const primaryExercise = state.exercises.find(ex => ex.id === primaryExerciseId);
             if (!primaryExercise) return showToast("Esercizio principale non trovato.", "error");
 
             modalContainer.innerHTML = `
-                <div class="modal-content p-6">
+                <div class="modal-content p-6 relative" onclick="event.stopPropagation()">
+                    <button onclick="window.app.closeModal()" class="absolute top-4 right-4 z-10 p-2 rounded-full material-button-text hover:bg-gray-200 !min-w-0"><span class="material-icons">close</span></button>
                     <h3 class="text-xl font-medium mb-2">Aggiungi Alternativa</h3>
                     <p class="text-sm text-gray-500 mb-6">Per: <strong>${primaryExercise.name}</strong></p>
                     <div class="flex flex-col gap-4">
@@ -2951,7 +3101,8 @@
             const availableExercises = state.exercises.filter(ex => !existingIds.includes(ex.id));
 
             modalContainer.innerHTML = `
-                <div class="modal-content p-6 flex flex-col">
+                <div class="modal-content p-6 flex flex-col relative" onclick="event.stopPropagation()">
+                    <button onclick="window.app.closeModal()" class="absolute top-4 right-4 z-10 p-2 rounded-full material-button-text hover:bg-gray-200 !min-w-0"><span class="material-icons">close</span></button>
                     <h3 class="text-xl font-medium mb-4">Scegli un'Alternativa</h3>
                     <div id="add-items-content"></div>
                     <div class="flex justify-end gap-2 mt-6">
@@ -3064,7 +3215,8 @@
         
         function openVariantAiGenerator(sheetId, itemId, primaryExerciseId) {
             modalContainer.innerHTML = `
-                <div class="modal-content p-6 overflow-y-auto">
+                <div class="modal-content p-6 overflow-y-auto relative" onclick="event.stopPropagation()">
+                    <button onclick="window.app.closeModal()" class="absolute top-4 right-4 z-10 p-2 rounded-full material-button-text hover:bg-gray-200 !min-w-0"><span class="material-icons">close</span></button>
                     <h3 class="text-xl font-medium mb-1">✨ Genera Alternativa con AI</h3>
                     <p class="text-sm text-gray-500 mb-6">L'AI creerà un nuovo esercizio e lo aggiungerà al tuo database.</p>
                     <div id="ai-variant-form">
@@ -3127,15 +3279,13 @@
             try {
                 const newExerciseData = JSON.parse(responseJsonString);
                 
-                // Fallback check in case the AI ignores the instruction
                 const isDuplicate = state.exercises.some(ex => ex.name.trim().toLowerCase() === newExerciseData.name.trim().toLowerCase());
                 if (isDuplicate) {
-                    showToast("L'AI ha generato un duplicato. Per favore, riprova.", "error");
+                    showToast("L'AI ha generato un duplicato. Riprova.", "error");
                     closeModal();
                     return;
                 }
                 
-                // 1. Aggiungi il nuovo esercizio al database
                 const exerciseCollection = collection(db, `/users/${state.userId}/exercises`);
                 const newExerciseRef = await addDoc(exerciseCollection, {
                     ...newExerciseData,
@@ -3144,7 +3294,6 @@
                     updatedAt: serverTimestamp()
                 });
 
-                // 2. Aggiungi la variante alla scheda con l'etichetta AI
                 const aiLabel = { text: "AI", color: "#f59e0b" };
                 await addVariantToSheetItem(sheetId, itemId, newExerciseRef.id, [aiLabel]);
                 
@@ -3152,13 +3301,189 @@
                 showToast("Alternativa AI generata e aggiunta!", "success");
 
             } catch(e) {
-                console.error("Errore durante la generazione dell'alternativa AI:", e);
+                console.error("Errore generazione alternativa AI:", e);
                 showToast("L'AI ha restituito un formato non valido. Riprova.", "error");
                 closeModal();
             }
         }
 
-        // --- FINE BLOCCO NUOVE FUNZIONI (VARIANTS) ---
+        // --- NUOVE FUNZIONI AGGIUNTE ---
+
+        async function showWorkoutSummary(workoutData) {
+            const { startTime, endTime, sheetName, elapsedSeconds } = workoutData;
+            
+            const q = query(
+                collection(db, `/users/${state.userId}/exerciseHistory`),
+                where('timestamp', '>=', startTime),
+                where('timestamp', '<=', endTime)
+            );
+            const snapshot = await getDocs(q);
+            const updatesDuringWorkout = snapshot.docs.map(d => ({id: d.id, ...d.data()}));
+
+            const updatesByExercise = updatesDuringWorkout.reduce((acc, item) => {
+                if(!acc[item.exerciseId]) {
+                    const exercise = state.exercises.find(ex => ex.id === item.exerciseId);
+                    acc[item.exerciseId] = { name: exercise?.name || 'Sconosciuto', updates: [] };
+                }
+                acc[item.exerciseId].updates.push(item);
+                return acc;
+            }, {});
+
+            let updatesHtml = Object.values(updatesByExercise).map(exData => {
+                return `
+                <div class="p-3 bg-gray-50 rounded-lg">
+                    <p class="font-bold">${exData.name}</p>
+                    <ul class="list-disc list-inside text-sm mt-1 space-y-1">
+                        ${exData.updates.map(item => {
+                            let content = '';
+                            if (item.params && Object.keys(item.params).length > 0) {
+                                content += Object.entries(item.params).map(([key, p]) => `<li><strong>${key}:</strong> ${renderCompoundParam(p.value)}</li>`).join('');
+                            }
+                            if (item.diary) {
+                                content += `<li><strong>Nota:</strong> ${item.diary}</li>`;
+                            }
+                            return content;
+                        }).join('')}
+                    </ul>
+                </div>`;
+            }).join('');
+            
+            if (!updatesHtml) {
+                updatesHtml = '<p class="text-center text-gray-500 text-sm py-4">Nessun parametro o nota aggiornati durante questa sessione.</p>';
+            }
+
+            modalContainer.innerHTML = `
+                <div class="modal-content p-6 flex flex-col relative" onclick="event.stopPropagation()">
+                    <button onclick="window.app.closeModal(); window.app.exitWorkoutMode(true);" class="absolute top-4 right-4 z-10 p-2 rounded-full material-button-text hover:bg-gray-200 !min-w-0"><span class="material-icons">close</span></button>
+                    <div class="text-center">
+                        <span class="material-icons text-5xl text-green-500">celebration</span>
+                        <h3 class="text-2xl font-bold mt-2">Riepilogo Allenamento</h3>
+                        <p class="text-gray-600">${sheetName}</p>
+                    </div>
+                    <div class="flex justify-around my-6 text-center">
+                        <div>
+                            <p class="text-sm text-gray-500">Durata</p>
+                            <p class="text-2xl font-bold text-purple-600">${formatGlobalTime(elapsedSeconds)}</p>
+                        </div>
+                    </div>
+                    <div class="flex-1 overflow-y-auto space-y-2 border-t border-b py-4">
+                        <h4 class="font-medium text-lg mb-2">Progressi della sessione</h4>
+                        ${updatesHtml}
+                    </div>
+                    <div class="flex justify-end gap-2 mt-6">
+                        <button id="close-summary-btn" class="material-button material-button-filled">Chiudi</button>
+                    </div>
+                </div>`;
+            
+            modalContainer.classList.remove('hidden');
+            
+            document.getElementById('close-summary-btn').onclick = () => {
+                closeModal();
+                exitWorkoutMode(true);
+            };
+        }
+        
+        async function duplicateSheet(sheetId) {
+            const { userId } = state;
+            if (!userId) return;
+            const sheetToCopy = state.sheets.find(s => s.id === sheetId);
+            if (!sheetToCopy) return;
+            
+            try {
+                const batch = writeBatch(db);
+                
+                const newSheetData = { ...sheetToCopy };
+                delete newSheetData.id;
+                newSheetData.name = `${sheetToCopy.name} (Copia)`;
+                newSheetData.createdAt = serverTimestamp();
+                newSheetData.updatedAt = serverTimestamp();
+                newSheetData.order = state.sheets.length;
+
+                const newSheetRef = doc(collection(db, `/users/${userId}/workoutSheets`));
+                batch.set(newSheetRef, newSheetData);
+
+                const itemsToCopy = state.sheetItems[sheetId] || [];
+                itemsToCopy.forEach(item => {
+                    const newItemData = { ...item };
+                    delete newItemData.id;
+                    const newItemRef = doc(collection(db, newSheetRef.path, 'items'));
+                    batch.set(newItemRef, newItemData);
+                });
+
+                await batch.commit();
+                showToast("Scheda duplicata con successo!", "success");
+            } catch(e) {
+                console.error(e);
+                showToast("Errore durante la duplicazione.", "error");
+            }
+        }
+        
+        async function duplicateContainer(containerId) {
+            const { userId } = state;
+            if (!userId) return;
+            const containerToCopy = state.sheetContainers.find(c => c.id === containerId);
+            if (!containerToCopy) return;
+            
+            try {
+                const batch = writeBatch(db);
+
+                const newContainerData = { ...containerToCopy };
+                delete newContainerData.id;
+                newContainerData.name = `${containerToCopy.name} (Copia)`;
+                newContainerData.createdAt = serverTimestamp();
+                newContainerData.updatedAt = serverTimestamp();
+                newContainerData.order = state.sheetContainers.length;
+
+                const newContainerRef = doc(collection(db, `/users/${userId}/sheetContainers`));
+                batch.set(newContainerRef, newContainerData);
+                
+                const sheetsToCopy = state.sheets.filter(s => s.containerId === containerId);
+                let sheetOrder = state.sheets.length;
+
+                for (const sheet of sheetsToCopy) {
+                    const newSheetData = { ...sheet };
+                    delete newSheetData.id;
+                    newSheetData.containerId = newContainerRef.id;
+                    newSheetData.order = sheetOrder++;
+                    newSheetData.createdAt = serverTimestamp();
+                    newSheetData.updatedAt = serverTimestamp();
+                    
+                    const newSheetRef = doc(collection(db, `/users/${userId}/workoutSheets`));
+                    batch.set(newSheetRef, newSheetData);
+
+                    const itemsToCopy = state.sheetItems[sheet.id] || [];
+                    itemsToCopy.forEach(item => {
+                        const newItemData = { ...item };
+                        delete newItemData.id;
+                        const newItemRef = doc(collection(db, newSheetRef.path, 'items'));
+                        batch.set(newItemRef, newItemData);
+                    });
+                }
+                
+                await batch.commit();
+                showToast("Contenitore duplicato con successo!", "success");
+
+            } catch(e) {
+                console.error(e);
+                showToast("Errore durante la duplicazione.", "error");
+            }
+        }
+
+        async function archiveEntity(type, id, shouldArchive) {
+            const { userId } = state;
+            if (!userId) return;
+            
+            let collectionPath = type === 'container' ? `/users/${userId}/sheetContainers` : `/users/${userId}/workoutSheets`;
+            
+            try {
+                const docRef = doc(db, collectionPath, id);
+                await updateDoc(docRef, { isArchived: shouldArchive });
+                showToast(`Elemento ${shouldArchive ? 'archiviato' : 'ripristinato'}.`, 'success');
+            } catch(e) {
+                console.error(e);
+                showToast('Si è verificato un errore.', 'error');
+            }
+        }
 
         // --- SETUP INIZIALE ---
         
@@ -3177,7 +3502,6 @@
                 const index = container.children.length;
                 const div = document.createElement('div');
                 div.className = "flex gap-1.5 items-center";
-                div.dataset.setIndex = index;
                 div.innerHTML = `<input type="text" placeholder="" class="input-field !p-2 flex-1" value=""><button onclick="window.app.addInputFieldToSet(this)" class="material-button-text p-2 rounded-full !min-w-0"><span class="material-icons">add</span></button><button onclick="this.parentElement.remove()" class="material-button-text p-2 rounded-full !min-w-0"><span class="material-icons">remove_circle_outline</span></button>`;
                 container.appendChild(div);
             },
@@ -3188,21 +3512,18 @@
                 newInput.className = 'input-field !p-2 flex-1';
                 buttonElement.parentElement.insertBefore(newInput, buttonElement);
             },
-            openSheetModal, deleteSheet, addItemsToSheet, resetSheetDoneStatus,
+            openSheetModal, addItemsToSheet, resetSheetDoneStatus,
             toggleSheetItemDone, reorderSheetItem, openSheetItemActions,
-            deleteSheetItem, toggleTimer, resetTimer, openContainerModal, deleteContainer,
+            deleteSheetItem, toggleTimer, resetTimer, openContainerModal,
             toggleExpansion, reorderEntity,
-            openWorkoutSelectionModal, renderWorkoutSheetSelection, startWorkout, workoutPrevStep,
+            openWorkoutSelectionModal, renderWorkoutSheetSelection, startWorkout, workoutPrevStep, exitWorkoutMode,
             deleteWorkoutSession(sessionId) {
                 if (!sessionId) return;
-                showConfirm("Elimina Sessione", "Sei sicuro di voler eliminare questa sessione di allenamento dallo storico? L'azione è irreversibile.", async () => {
+                showConfirm("Elimina Sessione", "Sei sicuro di voler eliminare questa sessione?", async () => {
                     try {
                         await deleteDoc(doc(db, `/users/${state.userId}/workoutSessions`, sessionId));
                         showToast("Sessione eliminata.", "success");
-                    } catch(e) {
-                        console.error("Errore eliminazione sessione:", e);
-                        showToast("Errore durante l'eliminazione.", "error");
-                    }
+                    } catch(e) { console.error(e); showToast("Errore.", "error"); }
                 });
             },
             toggleExtraSessions(sheetId, remainingCount) {
@@ -3251,7 +3572,46 @@
                 const currentLabels = (item.labels && item.labels[exerciseId]) || [];
                 const updatedLabels = currentLabels.filter((_, index) => index !== labelIndex);
                 updateSheetItemLabel(sheetId, itemId, exerciseId, updatedLabels);
-            }
+            },
+            openSheetActionsMenu(sheetId, isArchived) {
+                const sheet = state.sheets.find(s => s.id === sheetId);
+                modalContainer.innerHTML = `<div class="modal-content p-6 !w-auto !max-w-xs relative" onclick="event.stopPropagation()">
+                    <button onclick="window.app.closeModal()" class="absolute top-2 right-2 z-10 p-2 rounded-full material-button-text hover:bg-gray-200 !min-w-0"><span class="material-icons">close</span></button>
+                    <h3 class="text-xl font-medium mb-4">Azioni: ${sheet.name}</h3>
+                    <div class="space-y-2">
+                        ${isArchived ? `
+                            <button onclick="window.app.archiveEntity('sheet', '${sheetId}', false); window.app.closeModal();" class="material-button material-button-text w-full justify-start">Ripristina</button>
+                            <button onclick="window.app.deleteSheet('${sheetId}'); window.app.closeModal();" class="material-button material-button-text w-full justify-start text-red-600">Elimina Definitivamente</button>
+                        ` : `
+                            <button onclick="window.app.openSheetModal('${sheetId}')" class="material-button material-button-text w-full justify-start">Modifica</button>
+                            <button onclick="window.app.duplicateSheet('${sheetId}'); window.app.closeModal();" class="material-button material-button-text w-full justify-start">Duplica</button>
+                            <button onclick="window.app.archiveEntity('sheet', '${sheetId}', true); window.app.closeModal();" class="material-button material-button-text w-full justify-start">Archivia</button>
+                            <button onclick="window.app.deleteSheet('${sheetId}'); window.app.closeModal();" class="material-button material-button-text w-full justify-start text-red-600">Elimina Definitivamente</button>
+                        `}
+                    </div>
+                </div>`;
+                modalContainer.classList.remove('hidden');
+            },
+            openContainerActionsMenu(containerId, isArchived) {
+                 const container = state.sheetContainers.find(c => c.id === containerId);
+                modalContainer.innerHTML = `<div class="modal-content p-6 !w-auto !max-w-xs relative" onclick="event.stopPropagation()">
+                    <button onclick="window.app.closeModal()" class="absolute top-2 right-2 z-10 p-2 rounded-full material-button-text hover:bg-gray-200 !min-w-0"><span class="material-icons">close</span></button>
+                    <h3 class="text-xl font-medium mb-4">Azioni: ${container.name}</h3>
+                    <div class="space-y-2">
+                        ${isArchived ? `
+                            <button onclick="window.app.archiveEntity('container', '${containerId}', false); window.app.closeModal();" class="material-button material-button-text w-full justify-start">Ripristina</button>
+                            <button onclick="window.app.deleteContainer('${containerId}'); window.app.closeModal();" class="material-button material-button-text w-full justify-start text-red-600">Elimina Definitivamente</button>
+                        ` : `
+                            <button onclick="window.app.openContainerModal('${containerId}')" class="material-button material-button-text w-full justify-start">Modifica</button>
+                            <button onclick="window.app.duplicateContainer('${containerId}'); window.app.closeModal();" class="material-button material-button-text w-full justify-start">Duplica</button>
+                            <button onclick="window.app.archiveEntity('container', '${containerId}', true); window.app.closeModal();" class="material-button material-button-text w-full justify-start">Archivia</button>
+                             <button onclick="window.app.deleteContainer('${containerId}'); window.app.closeModal();" class="material-button material-button-text w-full justify-start text-red-600">Elimina Definitivamente</button>
+                        `}
+                    </div>
+                </div>`;
+                modalContainer.classList.remove('hidden');
+            },
+            deleteSheet, deleteContainer, duplicateSheet, duplicateContainer, archiveEntity,
         };
         
         function startApp() {
@@ -3276,6 +3636,13 @@
             document.getElementById('workout-prev-btn').onclick = workoutPrevStep;
             document.getElementById('end-workout-btn-header').onclick = endWorkout;
             document.getElementById('end-workout-btn-final').onclick = finishAndSaveWorkout;
+            
+            document.getElementById('toggle-archive-view-btn').onclick = () => {
+                state.showArchived = !state.showArchived;
+                const btn = document.getElementById('toggle-archive-view-btn');
+                btn.innerHTML = state.showArchived ? `<span class="material-icons">unarchive</span> Nascondi Archiviati` : `<span class="material-icons">archive</span> Mostra Archiviati`;
+                renderSheetsPage();
+            };
             
             document.getElementById('history-tab-dashboard').onclick = () => {
                 document.getElementById('history-tab-dashboard').classList.add('active');
@@ -3303,10 +3670,9 @@
                 const oldSheetIds = state.sheets.map(sh => sh.id);
                 const newSheetIds = newSheets.map(sh => sh.id);
 
-                // Unsubscribe from deleted sheets
                 oldSheetIds.filter(id => !newSheetIds.includes(id)).forEach(id => {
                     if (state.listeners[id]) {
-                        state.listeners[id](); // This is the unsubscribe function
+                        state.listeners[id](); 
                         delete state.listeners[id];
                         delete state.sheetItems[id];
                     }
@@ -3316,9 +3682,7 @@
                     if (!state.listeners[id]) { 
                          state.listeners[id] = onSnapshot(query(collection(db, `${basePath}/workoutSheets/${id}/items`)), (snapshot) => {
                             state.sheetItems[id] = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                            // Rerender only if the current page is sheets or if in workout mode on this sheet
                             if(state.isWorkoutModeActive && state.workout?.sheetId === id) {
-                                // Aggiorna dinamicamente i dati dell'allenamento in corso
                                 state.workout.items = state.sheetItems[id]
                                     .filter(item => !item.isDeactivated)
                                     .sort((a,b) => a.order - b.order);
@@ -3333,7 +3697,6 @@
                 render();
             }, e => console.error("workoutSheets listener error:", e));
             
-            // ** NUOVO: Gestore per riattivare il Wake Lock quando si torna sulla pagina **
             document.addEventListener('visibilitychange', async () => {
                 if (wakeLock !== null && document.visibilityState === 'visible' && state.isWorkoutModeActive) {
                     await acquireWakeLock();
