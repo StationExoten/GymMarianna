@@ -420,6 +420,9 @@
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
         const auth = getAuth(app);
+
+        // ** NUOVO: Variabile per il Wake Lock **
+        let wakeLock = null;
         
         // Stato dell'applicazione
         const state = {
@@ -2126,6 +2129,12 @@
                     await addDoc(collection(db, collectionPath), data);
                 }
                 await setDoc(doc(db, `/users/${userId}/exercises`, exerciseId), { updatedAt: serverTimestamp() }, { merge: true });
+
+                // ** NUOVO: Aggiorna la vista se si è in modalità allenamento **
+                if (state.isWorkoutModeActive) {
+                    renderWorkoutStep();
+                }
+                
                 closeModal();
                 showToast("Documentazione salvata.", 'success');
             } catch(e) {
@@ -2630,6 +2639,31 @@
         
         // --- LOGICA MODALITÀ ALLENAMENTO ---
         
+        // ** NUOVO: Funzioni per gestire il Wake Lock **
+        const acquireWakeLock = async () => {
+            if ('wakeLock' in navigator) {
+                try {
+                    wakeLock = await navigator.wakeLock.request('screen');
+                    wakeLock.addEventListener('release', () => {
+                        console.log('Wake Lock was released');
+                    });
+                    console.log('Wake Lock is active');
+                } catch (err) {
+                    console.error(`${err.name}, ${err.message}`);
+                }
+            } else {
+                console.log('Wake Lock API not supported. The screen may turn off.');
+            }
+        };
+
+        const releaseWakeLock = async () => {
+            if (wakeLock !== null) {
+                await wakeLock.release();
+                wakeLock = null;
+                console.log('Wake Lock released');
+            }
+        };
+
         function openWorkoutSelectionModal() {
             const hasUnassigned = state.sheets.some(s => !s.containerId);
             modalContainer.innerHTML = `
@@ -2676,7 +2710,7 @@
             `;
         }
 
-        function startWorkout(sheetId) {
+        async function startWorkout(sheetId) {
             closeModal();
             const sheet = state.sheets.find(s => s.id === sheetId);
             if (!sheet) return showToast("Scheda non trovata", 'error');
@@ -2686,6 +2720,9 @@
                 .sort((a,b) => a.order - b.order);
 
             if (items.length === 0) return showToast("Questa scheda è vuota!", 'error');
+            
+            // ** NUOVO: Attiva il Wake Lock **
+            await acquireWakeLock();
 
             state.isWorkoutModeActive = true;
             state.workout = {
@@ -2837,9 +2874,13 @@
             }
         }
         
-        function exitWorkoutMode(navigateToHistory = true) {
+        async function exitWorkoutMode(navigateToHistory = true) {
             stopGlobalTimer();
             stopAllTimers();
+            
+            // ** NUOVO: Rilascia il Wake Lock **
+            await releaseWakeLock();
+
             state.isWorkoutModeActive = false;
             state.workout = null;
             document.getElementById('app-container').classList.remove('hidden');
@@ -2859,11 +2900,17 @@
 
         function startGlobalTimer() {
             if (state.workout?.globalTimerIntervalId) clearInterval(state.workout.globalTimerIntervalId);
+            
             state.workout.elapsedSeconds = 0;
             document.getElementById('workout-global-timer').textContent = formatGlobalTime(0);
+            
             state.workout.globalTimerIntervalId = setInterval(() => {
-                state.workout.elapsedSeconds++;
-                document.getElementById('workout-global-timer').textContent = formatGlobalTime(state.workout.elapsedSeconds);
+                // ** NUOVO: Calcolo basato sul tempo reale trascorso **
+                if (state.workout && state.workout.startTime) {
+                    const elapsed = Math.floor((Date.now() - state.workout.startTime.getTime()) / 1000);
+                    state.workout.elapsedSeconds = elapsed;
+                    document.getElementById('workout-global-timer').textContent = formatGlobalTime(state.workout.elapsedSeconds);
+                }
             }, 1000);
         }
 
@@ -3286,6 +3333,13 @@
                 render();
             }, e => console.error("workoutSheets listener error:", e));
             
+            // ** NUOVO: Gestore per riattivare il Wake Lock quando si torna sulla pagina **
+            document.addEventListener('visibilitychange', async () => {
+                if (wakeLock !== null && document.visibilityState === 'visible' && state.isWorkoutModeActive) {
+                    await acquireWakeLock();
+                }
+            });
+
             navigate(state.currentPage);
         }
 
