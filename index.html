@@ -219,21 +219,6 @@
 </head>
 <body class="antialiased">
 
-    <!-- ========================================================== -->
-    <!-- ===== APRIL FOOL'S JOKE - START (RIMUOVI QUESTO BLOCCO) ===== -->
-    <!-- ========================================================== -->
-    <div id="april-fools-splash" class="fixed inset-0 z-[200] flex items-center justify-center bg-gray-900 bg-opacity-75 backdrop-blur-sm">
-        <div class="material-card p-8 w-full max-w-md text-center">
-            <span class="material-icons text-7xl text-red-500 mb-4 animate-pulse">error_outline</span>
-            <h2 class="text-2xl font-bold text-red-600 mb-2">ERRORE CRITICO</h2>
-            <p class="text-gray-700 mb-6">Tutti i tuoi dati sono stati cancellati. Premi su OK per rieffettuare il login e ricominciare dall'inizio.</p>
-            <button id="april-fools-ok-btn" class="material-button material-button-filled w-full !bg-red-600 hover:!bg-red-700">OK</button>
-        </div>
-    </div>
-    <!-- ======================================================== -->
-    <!-- ===== APRIL FOOL'S JOKE - END (RIMUOVI QUESTO BLOCCO) ===== -->
-    <!-- ======================================================== -->
-
     <div id="auth-container" class="fixed inset-0 z-[100] flex items-center justify-center bg-gray-100">
         <div class="material-card p-8 w-full max-w-sm">
             <h2 class="text-2xl font-bold text-center mb-1">Workout<span class="text-[#6750A4]">Tracker</span></h2>
@@ -428,37 +413,6 @@
 
 
     <script type="module">
-        // ==========================================================
-        // ===== APRIL FOOL'S JOKE - START (RIMUOVI QUESTA FUNZIONE) =====
-        // ==========================================================
-        function initializeAprilFoolsJoke() {
-            const splashScreen = document.getElementById('april-fools-splash');
-            const okButton = document.getElementById('april-fools-ok-btn');
-
-            if (splashScreen && okButton) {
-                // Assicura che il resto dell'app sia inizialmente non interagibile
-                document.body.style.overflow = 'hidden';
-
-                okButton.addEventListener('click', () => {
-                    // Aggiungi un effetto di dissolvenza
-                    splashScreen.style.transition = 'opacity 0.5s ease-out';
-                    splashScreen.style.opacity = '0';
-                    
-                    // Dopo l'animazione, rimuovi lo splash dal display e ripristina lo scroll
-                    setTimeout(() => {
-                        splashScreen.style.display = 'none';
-                        // La logica successiva dell'app gestirà la classe 'overflow-hidden' se necessario
-                        document.body.style.overflow = ''; 
-                    }, 500); // Corrisponde alla durata della transizione
-                });
-            }
-        }
-        // Esegui lo scherzo non appena lo script viene caricato
-        initializeAprilFoolsJoke();
-        // ========================================================
-        // ===== APRIL FOOL'S JOKE - END (RIMUOVI QUESTA FUNZIONE) =====
-        // ========================================================
-
         // Importa le funzioni di Firebase
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
         import { 
@@ -3706,8 +3660,25 @@
             const basePath = `/users/${userId}`;
 
             onSnapshot(query(collection(db, `${basePath}/categories`), orderBy("name")), s => { state.categories = s.docs.map(d=>({id:d.id,...d.data()})); render(); }, e => console.error("categories listener error:", e));
-            onSnapshot(query(collection(db, `${basePath}/exercises`)), s => { state.exercises = s.docs.map(d=>({id:d.id,...d.data()})); render(); }, e => console.error("exercises listener error:", e));
-            onSnapshot(query(collection(db, `${basePath}/exerciseHistory`), orderBy("timestamp", "desc")), s => { state.history = s.docs.map(d=>({id:d.id,...d.data()})); render(); }, e => console.error("exerciseHistory listener error:", e));
+            
+            // ===== INIZIO CODICE MODIFICATO =====
+            onSnapshot(query(collection(db, `${basePath}/exercises`)), s => { 
+                state.exercises = s.docs.map(d=>({id:d.id,...d.data()})); 
+                render();
+                if (state.isWorkoutModeActive) {
+                    renderWorkoutStep();
+                }
+            }, e => console.error("exercises listener error:", e));
+            
+            onSnapshot(query(collection(db, `${basePath}/exerciseHistory`), orderBy("timestamp", "desc")), s => { 
+                state.history = s.docs.map(d=>({id:d.id,...d.data()})); 
+                render();
+                if (state.isWorkoutModeActive) {
+                    renderWorkoutStep();
+                }
+            }, e => console.error("exerciseHistory listener error:", e));
+            // ===== FINE CODICE MODIFICATO =====
+
             onSnapshot(query(collection(db, `${basePath}/sheetContainers`), orderBy("order")), s => { state.sheetContainers = s.docs.map(d=>({id:d.id,...d.data()})); render(); }, e => console.error("sheetContainers listener error:", e));
             onSnapshot(query(collection(db, `${basePath}/workoutSessions`), orderBy("startTime", "desc")), s => { state.workoutSessions = s.docs.map(d=>({id:d.id,...d.data()})); render(); }, e => console.error("workoutSessions listener error:", e));
             
