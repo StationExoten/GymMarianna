@@ -215,6 +215,29 @@
                 transform: rotate(360deg);
             }
         }
+
+        /* Stili per il calendario */
+        .calendar-day {
+            min-height: 100px;
+            border: 2px solid transparent;
+        }
+        .calendar-day.today { border-color: #3b82f6; } /* Blue */
+        .calendar-day.completed { border-color: #22c55e; } /* Green */
+        .calendar-day.missed { border-color: #ef4444; } /* Red */
+
+        .calendar-day.today.completed {
+            background-image: linear-gradient(to bottom right, #e8f5e9, #dbeafe);
+        }
+         .day-event {
+            font-size: 0.7rem;
+            padding: 2px 4px;
+            border-radius: 4px;
+            margin-top: 2px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
     </style>
 </head>
 <body class="antialiased">
@@ -285,6 +308,7 @@
                     <div class="flex items-center">
                         <nav class="hidden md:flex space-x-4 items-center">
                             <button id="nav-sheets" class="nav-item py-2 px-3 text-gray-600 font-medium">Scheda Allenamento</button>
+                            <button id="nav-calendar" class="nav-item py-2 px-3 text-gray-600 font-medium">Calendario</button>
                             <button id="nav-history" class="nav-item py-2 px-3 text-gray-600 font-medium">Storico e Progressi</button>
                             <button id="nav-db" class="nav-item py-2 px-3 text-gray-600 font-medium">Database Esercizi</button>
                         </nav>
@@ -299,6 +323,10 @@
                 <button id="nav-mobile-sheets" class="flex flex-col items-center justify-center p-2 text-gray-500 nav-item w-full">
                     <span class="material-icons">assignment</span>
                     <span class="text-xs">Schede</span>
+                </button>
+                <button id="nav-mobile-calendar" class="flex flex-col items-center justify-center p-2 text-gray-500 nav-item w-full">
+                    <span class="material-icons">calendar_month</span>
+                    <span class="text-xs">Calendario</span>
                 </button>
                 <button id="nav-mobile-history" class="flex flex-col items-center justify-center p-2 text-gray-500 nav-item w-full">
                     <span class="material-icons">timeline</span>
@@ -334,6 +362,26 @@
                 <div id="archived-sheets-list" class="hidden mt-8">
                     <h3 class="text-xl font-medium text-gray-500 border-b pb-2 mb-4">Elementi Archiviati</h3>
                     <div class="space-y-4"></div>
+                </div>
+            </div>
+
+            <div id="page-calendar" class="hidden">
+                <h2 class="text-2xl font-medium mb-4">Calendario Allenamenti</h2>
+                <div class="material-card p-4">
+                    <div id="calendar-header" class="flex justify-between items-center mb-4">
+                        <button id="prev-month-btn" class="material-button-text p-2 rounded-full"><span class="material-icons">chevron_left</span></button>
+                        <h3 id="calendar-month-year" class="text-xl font-medium"></h3>
+                        <button id="next-month-btn" class="material-button-text p-2 rounded-full"><span class="material-icons">chevron_right</span></button>
+                    </div>
+                    <div id="calendar-weekdays" class="grid grid-cols-7 gap-1 text-center font-bold text-sm text-gray-500 mb-2">
+                        <div>Lun</div><div>Mar</div><div>Mer</div><div>Gio</div><div>Ven</div><div>Sab</div><div>Dom</div>
+                    </div>
+                    <div id="calendar-grid" class="grid grid-cols-7 gap-1">
+                        <!-- Giorni del calendario verranno inseriti qui -->
+                    </div>
+                </div>
+                <div id="todays-workout-container" class="mt-6">
+                    <!-- Allenamento di oggi verrà inserito qui -->
                 </div>
             </div>
 
@@ -422,7 +470,7 @@
             onAuthStateChanged,
             signOut 
         } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-        import { getFirestore, collection, addDoc, getDocs, doc, setDoc, deleteDoc, onSnapshot, query, where, orderBy, serverTimestamp, writeBatch, Timestamp, updateDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+        import { getFirestore, collection, addDoc, getDocs, doc, setDoc, deleteDoc, onSnapshot, query, where, orderBy, serverTimestamp, writeBatch, Timestamp, updateDoc, arrayUnion } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
         // Configurazione di Firebase
         const firebaseConfig = {
@@ -454,11 +502,13 @@
             sheetContainers: [],
             sheetItems: {},
             workoutSessions: [], 
+            plannedWorkouts: [],
             listeners: {},
             timers: {},
             isWorkoutModeActive: false,
             workout: null,
             showArchived: false,
+            calendarDate: new Date(),
         };
         
         const ZONES = ["Braccia", "Spalle", "Dorso", "Petto", "Addome", "Glutei", "Gambe", "Cardio"];
@@ -474,11 +524,13 @@
         // Elementi DOM
         const pages = {
             sheets: document.getElementById('page-sheets'),
+            calendar: document.getElementById('page-calendar'),
             history: document.getElementById('page-history'),
             db: document.getElementById('page-db'),
         };
         const navs = {
             sheets: [document.getElementById('nav-sheets'), document.getElementById('nav-mobile-sheets')],
+            calendar: [document.getElementById('nav-calendar'), document.getElementById('nav-mobile-calendar')],
             history: [document.getElementById('nav-history'), document.getElementById('nav-mobile-history')],
             db: [document.getElementById('nav-db'), document.getElementById('nav-mobile-db')],
         };
@@ -511,6 +563,11 @@
                     fab.onclick = () => openSheetModal();
                     icon = 'assignment_add';
                     break;
+                case 'calendar':
+                    fab.title = 'Pianifica Allenamento';
+                    fab.onclick = () => openPlanWorkoutModal();
+                    icon = 'event';
+                    break;
                 case 'history':
                     fab.title = 'Aggiungi Documentazione';
                     fab.onclick = () => openAddHistoryModal();
@@ -530,10 +587,144 @@
             if (!state.userId || state.isWorkoutModeActive) return; 
             switch (state.currentPage) {
                 case 'sheets': renderSheetsPage(); break;
+                case 'calendar': renderCalendarPage(); break;
                 case 'history': renderHistoryPage(); break;
                 case 'db': renderDbPage(); break;
             }
         }
+
+        // --- INIZIO NUOVE FUNZIONI CALENDARIO ---
+        function renderCalendarPage() {
+            const { calendarDate } = state;
+            const monthYearEl = document.getElementById('calendar-month-year');
+            const gridEl = document.getElementById('calendar-grid');
+
+            if (!monthYearEl || !gridEl) return;
+            
+            monthYearEl.textContent = calendarDate.toLocaleDateString('it-IT', { month: 'long', year: 'numeric' });
+            
+            const year = calendarDate.getFullYear();
+            const month = calendarDate.getMonth();
+
+            const firstDayOfMonth = new Date(year, month, 1);
+            const lastDayOfMonth = new Date(year, month + 1, 0);
+            
+            // 0=Domenica, 1=Lunedì... ma noi vogliamo 0=Lunedì
+            let startDayOfWeek = firstDayOfMonth.getDay() - 1;
+            if (startDayOfWeek === -1) startDayOfWeek = 6; // Domenica
+
+            gridEl.innerHTML = '';
+
+            // Padding giorni precedenti
+            for (let i = 0; i < startDayOfWeek; i++) {
+                gridEl.innerHTML += `<div class="bg-gray-50 rounded-lg"></div>`;
+            }
+
+            const today = dateFns.startOfDay(new Date());
+
+            // Giorni del mese
+            for (let day = 1; day <= lastDayOfMonth.getDate(); day++) {
+                const currentDate = new Date(year, month, day);
+                const currentDateStart = dateFns.startOfDay(currentDate);
+
+                const completedSessions = state.workoutSessions.filter(session => 
+                    dateFns.isSameDay(currentDateStart, new Date(session.startTime.seconds * 1000))
+                );
+
+                const plannedWorkoutsForDay = state.plannedWorkouts.filter(pw => 
+                    isWorkoutOnDate(currentDate, pw)
+                );
+
+                const isToday = dateFns.isSameDay(currentDateStart, today);
+                const isCompleted = completedSessions.length > 0;
+                const isMissed = !isCompleted && plannedWorkoutsForDay.length > 0 && currentDateStart < today;
+
+                let dayClasses = 'calendar-day p-2 bg-white rounded-lg cursor-pointer hover:bg-gray-100 transition';
+                if(isToday) dayClasses += ' today';
+                if(isCompleted) dayClasses += ' completed';
+                if(isMissed) dayClasses += ' missed';
+
+                let eventsHtml = '';
+                completedSessions.forEach(session => {
+                    eventsHtml += `<div class="day-event bg-green-100 text-green-800">${session.sheetName}</div>`;
+                });
+                plannedWorkoutsForDay.forEach(pw => {
+                    const alreadyRendered = completedSessions.some(s => s.sheetId === pw.sheetId);
+                    if (!alreadyRendered) {
+                         eventsHtml += `<div class="day-event bg-blue-100 text-blue-800">${pw.sheetName} (P)</div>`;
+                    }
+                });
+
+                gridEl.innerHTML += `
+                    <div class="${dayClasses}" onclick="window.app.openDayDetailsModal('${currentDate.toISOString()}')">
+                        <span class="font-bold text-sm">${day}</span>
+                        <div class="mt-1">${eventsHtml}</div>
+                    </div>`;
+            }
+            renderTodaysWorkout();
+        }
+
+        function renderTodaysWorkout() {
+            const container = document.getElementById('todays-workout-container');
+            const today = new Date();
+            const todayPlanned = state.plannedWorkouts.find(pw => isWorkoutOnDate(today, pw));
+
+            if (todayPlanned) {
+                const sheet = state.sheets.find(s => s.id === todayPlanned.sheetId);
+                container.innerHTML = `
+                    <h3 class="text-xl font-medium mb-2">Allenamento di Oggi</h3>
+                    <div class="material-card p-4 flex justify-between items-center">
+                        <div>
+                            <h4 class="font-bold text-lg">${sheet?.name || 'Scheda non trovata'}</h4>
+                            <p class="text-sm text-gray-500">${sheet?.description || 'Allenamento pianificato'}</p>
+                        </div>
+                        <button onclick="window.app.startWorkout('${todayPlanned.sheetId}')" class="material-button material-button-filled flex items-center gap-2">
+                            <span class="material-icons">play_arrow</span> Inizia
+                        </button>
+                    </div>
+                `;
+            } else {
+                container.innerHTML = `
+                    <h3 class="text-xl font-medium mb-2">Allenamento di Oggi</h3>
+                    <div class="material-card p-4 text-center text-gray-500">
+                        Nessun allenamento pianificato per oggi.
+                    </div>
+                `;
+            }
+        }
+        
+        function isWorkoutOnDate(date, plannedWorkout) {
+            const checkDate = dateFns.startOfDay(date);
+            const startDate = dateFns.startOfDay(new Date(plannedWorkout.startDate.seconds * 1000));
+            const endDate = plannedWorkout.endDate ? dateFns.startOfDay(new Date(plannedWorkout.endDate.seconds * 1000)) : null;
+
+            if (checkDate < startDate || (endDate && checkDate > endDate)) {
+                return false;
+            }
+
+            // Controlla le eccezioni
+            if (plannedWorkout.exceptions && plannedWorkout.exceptions.length > 0) {
+                 const isException = plannedWorkout.exceptions.some(exTimestamp => 
+                    dateFns.isSameDay(checkDate, new Date(exTimestamp.seconds * 1000))
+                );
+                if (isException) return false;
+            }
+
+            switch (plannedWorkout.type) {
+                case 'single':
+                    return dateFns.isSameDay(checkDate, startDate);
+                case 'recurring_weekly':
+                    // getDay: 0=Sun, 1=Mon...
+                    const dayOfWeek = date.getDay();
+                    return plannedWorkout.daysOfWeek.includes(dayOfWeek === 0 ? 7 : dayOfWeek); // Adjust for 1-7 week
+                case 'interval':
+                    const diff = dateFns.differenceInDays(checkDate, startDate);
+                    return diff >= 0 && diff % plannedWorkout.intervalDays === 0;
+                default:
+                    return false;
+            }
+        }
+        // --- FINE NUOVE FUNZIONI CALENDARIO ---
         
         function renderDbPage() {
             const list = document.getElementById('categories-list');
@@ -1266,6 +1457,180 @@
             }
             if(!state.isWorkoutModeActive) document.body.classList.remove('overflow-hidden');
         }
+
+        // --- INIZIO NUOVI MODAL PER CALENDARIO ---
+        function openPlanWorkoutModal(dateISO = null) {
+            const date = dateISO ? new Date(dateISO) : new Date();
+            const todayStr = date.toISOString().split('T')[0];
+            
+            let optionsHtml = '<option value="">Seleziona...</option>';
+            const activeContainers = state.sheetContainers.filter(c => !c.isArchived);
+            const unassignedSheets = state.sheets.filter(s => !s.isArchived && !s.containerId);
+
+            activeContainers.forEach(container => {
+                const sheetsInContainer = state.sheets.filter(s => !s.isArchived && s.containerId === container.id);
+                if (sheetsInContainer.length > 0) {
+                    optionsHtml += `<optgroup label="${container.name}">`;
+                    sheetsInContainer.forEach(sheet => {
+                        optionsHtml += `<option value="${sheet.id}">${sheet.name}</option>`;
+                    });
+                    optionsHtml += `</optgroup>`;
+                }
+            });
+
+            if(unassignedSheets.length > 0) {
+                optionsHtml += `<optgroup label="Non Assegnate">`;
+                unassignedSheets.forEach(sheet => {
+                    optionsHtml += `<option value="${sheet.id}">${sheet.name}</option>`;
+                });
+                optionsHtml += `</optgroup>`;
+            }
+
+            modalContainer.innerHTML = `
+                <div class="modal-content p-6 overflow-y-auto relative" onclick="event.stopPropagation()">
+                    <button onclick="window.app.closeModal()" class="absolute top-4 right-4 z-10 p-2 rounded-full material-button-text hover:bg-gray-200 !min-w-0"><span class="material-icons">close</span></button>
+                    <h3 class="text-xl font-medium mb-6">Pianifica Allenamento</h3>
+                    <div class="space-y-4">
+                        <div>
+                            <label class="text-sm font-medium text-gray-700">Scegli una scheda</label>
+                            <select id="plan-sheet-id" class="input-field mt-1">
+                                ${optionsHtml}
+                            </select>
+                        </div>
+                        <div>
+                            <label class="text-sm font-medium text-gray-700">Tipo di pianificazione</label>
+                            <select id="plan-type" class="input-field mt-1">
+                                <option value="single">Giorno singolo</option>
+                                <option value="recurring_weekly">Ricorrenza settimanale</option>
+                                <option value="interval">Intervallo di giorni</option>
+                            </select>
+                        </div>
+                        <div id="plan-options"></div>
+                    </div>
+                    <div class="flex justify-end gap-2 mt-6">
+                        <button onclick="window.app.closeModal()" class="material-button material-button-text">Annulla</button>
+                        <button id="save-plan-btn" class="material-button material-button-filled">Salva Piano</button>
+                    </div>
+                </div>`;
+            
+            const typeSelect = document.getElementById('plan-type');
+            const optionsDiv = document.getElementById('plan-options');
+            
+            const renderPlanOptions = () => {
+                const type = typeSelect.value;
+                switch(type) {
+                    case 'single':
+                        optionsDiv.innerHTML = `
+                            <label class="text-sm font-medium text-gray-700">Data</label>
+                            <input type="date" id="plan-date" class="input-field mt-1" value="${todayStr}">`;
+                        break;
+                    case 'recurring_weekly':
+                         optionsDiv.innerHTML = `
+                            <div class="space-y-2">
+                                <p class="text-sm font-medium text-gray-700">Giorni della settimana</p>
+                                <div class="grid grid-cols-3 md:grid-cols-4 gap-2">
+                                    ${['Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato', 'Domenica'].map((day, i) => `
+                                        <label class="flex items-center gap-2 p-2 border rounded-lg">
+                                            <input type="checkbox" name="plan-day-of-week" value="${i + 1}" class="w-4 h-4"> ${day}
+                                        </label>
+                                    `).join('')} 
+                                </div>
+                                <div class="grid grid-cols-2 gap-4 mt-2">
+                                    <div>
+                                        <label class="text-sm font-medium text-gray-700">Data Inizio</label>
+                                        <input type="date" id="plan-start-date" class="input-field mt-1" value="${todayStr}">
+                                    </div>
+                                    <div>
+                                        <label class="text-sm font-medium text-gray-700">Data Fine (opzionale)</label>
+                                        <input type="date" id="plan-end-date" class="input-field mt-1">
+                                    </div>
+                                </div>
+                            </div>`;
+                        break;
+                     case 'interval':
+                        optionsDiv.innerHTML = `
+                            <div class="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label class="text-sm font-medium text-gray-700">Allenati ogni</label>
+                                    <div class="flex items-center gap-2 mt-1">
+                                        <input type="number" id="plan-interval" class="input-field !p-2" min="1" value="2"> giorni
+                                    </div>
+                                </div>
+                                <div>
+                                    <label class="text-sm font-medium text-gray-700">Data Inizio</label>
+                                    <input type="date" id="plan-start-date" class="input-field mt-1" value="${todayStr}">
+                                </div>
+                            </div>
+                            <div class="mt-4">
+                                <label class="text-sm font-medium text-gray-700">Data Fine (opzionale)</label>
+                                <input type="date" id="plan-end-date" class="input-field mt-1">
+                            </div>`;
+                        break;
+                }
+            };
+            
+            typeSelect.onchange = renderPlanOptions;
+            renderPlanOptions();
+
+            modalContainer.classList.remove('hidden');
+            document.body.classList.add('overflow-hidden');
+            document.getElementById('save-plan-btn').onclick = () => savePlannedWorkout();
+        }
+
+        function openDayDetailsModal(dateISO) {
+            const date = new Date(dateISO);
+            
+            const completed = state.workoutSessions.filter(s => dateFns.isSameDay(date, new Date(s.startTime.seconds * 1000)));
+            const planned = state.plannedWorkouts.filter(pw => isWorkoutOnDate(date, pw));
+            const completedSheetIds = completed.map(c => c.sheetId);
+
+            let contentHtml = '';
+
+            if (completed.length > 0) {
+                contentHtml += `<h4 class="font-bold text-lg mb-2">Allenamenti Completati</h4>
+                                <div class="space-y-2">
+                                ${completed.map(s => `
+                                    <div class="p-3 bg-green-50 rounded-lg">
+                                        <p class="font-medium">${s.sheetName}</p>
+                                        <p class="text-sm text-gray-600">Durata: ${formatTime(s.durationSeconds)}</p>
+                                    </div>`).join('')}
+                                </div>`;
+            }
+
+            const uncompletedPlanned = planned.filter(p => !completedSheetIds.includes(p.sheetId));
+            if (uncompletedPlanned.length > 0) {
+                contentHtml += `<h4 class="font-bold text-lg mt-4 mb-2">Allenamenti Pianificati</h4>
+                                 <div class="space-y-2">
+                                ${uncompletedPlanned.map(p => `
+                                    <div class="p-3 bg-blue-50 rounded-lg flex justify-between items-center">
+                                        <p class="font-medium">${p.sheetName}</p>
+                                        <button onclick="window.app.promptDeletePlannedWorkout('${p.id}', '${dateISO}')" class="material-button-text !text-red-500 p-2 rounded-full !min-w-0">
+                                            <span class="material-icons">delete_outline</span>
+                                        </button>
+                                    </div>`).join('')}
+                                </div>`;
+            }
+
+            if(contentHtml === '') {
+                contentHtml = `<p class="text-center text-gray-500 py-4">Nessuna attività per questo giorno.</p>`;
+            }
+
+            modalContainer.innerHTML = `
+                <div class="modal-content p-6 overflow-y-auto relative" onclick="event.stopPropagation()">
+                    <button onclick="window.app.closeModal()" class="absolute top-4 right-4 z-10 p-2 rounded-full material-button-text hover:bg-gray-200 !min-w-0"><span class="material-icons">close</span></button>
+                    <h3 class="text-xl font-medium mb-4">Dettagli del ${date.toLocaleDateString('it-IT', {day: 'numeric', month: 'long'})}</h3>
+                    <div class="max-h-80 overflow-y-auto pr-2">${contentHtml}</div>
+                    <div class="flex justify-end gap-2 mt-6 border-t pt-4">
+                        <button onclick="window.app.openPlanWorkoutModal('${dateISO}')" class="material-button material-button-outlined">Pianifica per questo giorno</button>
+                        <button onclick="window.app.closeModal()" class="material-button material-button-text">Chiudi</button>
+                    </div>
+                </div>
+            `;
+             modalContainer.classList.remove('hidden');
+             document.body.classList.add('overflow-hidden');
+        }
+        // --- FINE NUOVI MODAL PER CALENDARIO ---
+
 
         function openCategoryModal(id = null) {
             const category = id ? state.categories.find(c => c.id === id) : null;
@@ -2079,6 +2444,130 @@
         }
         
         // --- LOGICA DATABASE (Firestore) ---
+        
+        // --- INIZIO NUOVE FUNZIONI DB PER CALENDARIO ---
+        async function savePlannedWorkout() {
+            const { userId } = state;
+            const sheetId = document.getElementById('plan-sheet-id').value;
+            const type = document.getElementById('plan-type').value;
+
+            if (!sheetId) {
+                return showToast("Seleziona una scheda.", 'error');
+            }
+
+            const sheet = state.sheets.find(s => s.id === sheetId);
+            const data = {
+                sheetId,
+                sheetName: sheet.name,
+                type,
+                exceptions: []
+            };
+
+            if (type === 'single') {
+                const dateVal = document.getElementById('plan-date').value;
+                if (!dateVal) return showToast("Seleziona una data.", 'error');
+                data.startDate = Timestamp.fromDate(new Date(dateVal));
+            } else {
+                 const startDateVal = document.getElementById('plan-start-date').value;
+                 const endDateVal = document.getElementById('plan-end-date').value;
+                 if (!startDateVal) return showToast("Seleziona una data di inizio.", 'error');
+                 data.startDate = Timestamp.fromDate(new Date(startDateVal));
+                 if(endDateVal) data.endDate = Timestamp.fromDate(new Date(endDateVal));
+
+                 if(type === 'recurring_weekly') {
+                    data.daysOfWeek = Array.from(document.querySelectorAll('input[name="plan-day-of-week"]:checked')).map(el => parseInt(el.value));
+                    if (data.daysOfWeek.length === 0) return showToast("Seleziona almeno un giorno della settimana.", 'error');
+                 } else { // interval
+                     const interval = parseInt(document.getElementById('plan-interval').value);
+                     if (!interval || interval < 1) return showToast("L'intervallo deve essere di almeno 1 giorno.", 'error');
+                     data.intervalDays = interval;
+                 }
+            }
+            
+            try {
+                await addDoc(collection(db, `/users/${userId}/plannedWorkouts`), data);
+                showToast("Allenamento pianificato con successo!", 'success');
+                closeModal();
+            } catch(e) {
+                console.error("Errore salvataggio piano:", e);
+                showToast("Errore durante il salvataggio.", 'error');
+            }
+        }
+        
+        function promptDeletePlannedWorkout(planId, dateISO) {
+            const plannedWorkout = state.plannedWorkouts.find(p => p.id === planId);
+            if (!plannedWorkout) return;
+
+            if (plannedWorkout.type === 'single') {
+                showConfirm("Elimina Piano", "Sei sicuro di voler eliminare questo allenamento pianificato?", () => deleteEntirePlannedWorkout(planId));
+                return;
+            }
+
+            // Modal custom per la cancellazione di eventi ricorrenti
+            modalContainer.innerHTML = `
+                <div class="modal-content p-6 !w-auto !max-w-md relative" onclick="event.stopPropagation()">
+                    <button onclick="window.app.closeModal()" class="absolute top-2 right-2 z-10 p-2 rounded-full material-button-text hover:bg-gray-200 !min-w-0"><span class="material-icons">close</span></button>
+                    <h3 class="text-xl font-medium mb-4">Elimina allenamento ricorrente</h3>
+                    <p class="mb-6 text-gray-600">Come vuoi eliminare questo allenamento?</p>
+                    <div class="space-y-3 flex flex-col items-start">
+                        <button id="del-single-btn" class="material-button material-button-outlined w-full text-left justify-start">Solo questa istanza</button>
+                        <button id="del-future-btn" class="material-button material-button-outlined w-full text-left justify-start">Questa e le istanze future</button>
+                        <button id="del-all-btn" class="material-button material-button-outlined !border-red-500 !text-red-500 w-full text-left justify-start">Tutte le istanze</button>
+                    </div>
+                     <div class="flex justify-end gap-2 mt-6">
+                        <button onclick="window.app.closeModal()" class="material-button material-button-text">Annulla</button>
+                    </div>
+                </div>
+            `;
+            modalContainer.classList.remove('hidden');
+
+            document.getElementById('del-single-btn').onclick = () => handleDeleteSingleInstance(planId, dateISO);
+            document.getElementById('del-future-btn').onclick = () => handleDeleteFutureInstances(planId, dateISO);
+            document.getElementById('del-all-btn').onclick = () => deleteEntirePlannedWorkout(planId);
+        }
+
+        async function handleDeleteSingleInstance(planId, dateISO) {
+            const date = new Date(dateISO);
+            const exceptionTimestamp = Timestamp.fromDate(date);
+            try {
+                const docRef = doc(db, `/users/${state.userId}/plannedWorkouts`, planId);
+                await updateDoc(docRef, {
+                    exceptions: arrayUnion(exceptionTimestamp)
+                });
+                showToast("Istanza eliminata.", 'success');
+                closeModal();
+            } catch (e) {
+                console.error("Errore eliminazione istanza:", e);
+                showToast("Errore durante l'eliminazione.", 'error');
+            }
+        }
+        
+        async function handleDeleteFutureInstances(planId, dateISO) {
+            const newEndDate = dateFns.subDays(new Date(dateISO), 1);
+            try {
+                const docRef = doc(db, `/users/${state.userId}/plannedWorkouts`, planId);
+                await updateDoc(docRef, {
+                    endDate: Timestamp.fromDate(newEndDate)
+                });
+                showToast("Istanze future eliminate.", 'success');
+                closeModal();
+            } catch (e) {
+                console.error("Errore eliminazione istanze future:", e);
+                showToast("Errore durante l'eliminazione.", 'error');
+            }
+        }
+        
+        async function deleteEntirePlannedWorkout(planId) {
+            try {
+                await deleteDoc(doc(db, `/users/${state.userId}/plannedWorkouts`, planId));
+                showToast("Pianificazione eliminata.", 'success');
+                closeModal();
+            } catch(e) {
+                console.error("Errore eliminazione piano:", e);
+                showToast("Errore durante l'eliminazione.", 'error');
+            }
+        }
+        // --- FINE NUOVE FUNZIONI DB PER CALENDARIO ---
         
         async function saveAiDetailsToExercise(exerciseId, details) {
             const { userId } = state;
@@ -3517,6 +4006,7 @@
             deleteSheetItem, toggleTimer, resetTimer, openContainerModal,
             toggleExpansion, reorderEntity,
             openWorkoutSelectionModal, renderWorkoutSheetSelection, startWorkout, workoutPrevStep, exitWorkoutMode,
+            openPlanWorkoutModal, openDayDetailsModal, promptDeletePlannedWorkout,
             deleteWorkoutSession(sessionId) {
                 if (!sessionId) return;
                 showConfirm("Elimina Sessione", "Sei sicuro di voler eliminare questa sessione?", async () => {
@@ -3630,6 +4120,8 @@
             document.getElementById('add-category-btn').onclick = () => openCategoryModal();
             document.getElementById('add-container-btn').onclick = () => openContainerModal();
             document.getElementById('ai-generator-btn').onclick = () => openAiGeneratorModal();
+            document.getElementById('prev-month-btn').onclick = () => { state.calendarDate = dateFns.subMonths(state.calendarDate, 1); renderCalendarPage(); };
+            document.getElementById('next-month-btn').onclick = () => { state.calendarDate = dateFns.addMonths(state.calendarDate, 1); renderCalendarPage(); };
 
             document.getElementById('workout-fab').onclick = openWorkoutSelectionModal;
             document.getElementById('workout-next-btn').onclick = workoutNextStep;
@@ -3661,7 +4153,6 @@
 
             onSnapshot(query(collection(db, `${basePath}/categories`), orderBy("name")), s => { state.categories = s.docs.map(d=>({id:d.id,...d.data()})); render(); }, e => console.error("categories listener error:", e));
             
-            // ===== INIZIO CODICE MODIFICATO =====
             onSnapshot(query(collection(db, `${basePath}/exercises`)), s => { 
                 state.exercises = s.docs.map(d=>({id:d.id,...d.data()})); 
                 render();
@@ -3677,10 +4168,10 @@
                     renderWorkoutStep();
                 }
             }, e => console.error("exerciseHistory listener error:", e));
-            // ===== FINE CODICE MODIFICATO =====
 
             onSnapshot(query(collection(db, `${basePath}/sheetContainers`), orderBy("order")), s => { state.sheetContainers = s.docs.map(d=>({id:d.id,...d.data()})); render(); }, e => console.error("sheetContainers listener error:", e));
             onSnapshot(query(collection(db, `${basePath}/workoutSessions`), orderBy("startTime", "desc")), s => { state.workoutSessions = s.docs.map(d=>({id:d.id,...d.data()})); render(); }, e => console.error("workoutSessions listener error:", e));
+            onSnapshot(query(collection(db, `${basePath}/plannedWorkouts`)), s => { state.plannedWorkouts = s.docs.map(d=>({id:d.id,...d.data()})); render(); }, e => console.error("plannedWorkouts listener error:", e));
             
             onSnapshot(query(collection(db, `${basePath}/workoutSheets`), orderBy("order")), s => {
                 const newSheets = s.docs.map(d=>({id:d.id,...d.data()}));
