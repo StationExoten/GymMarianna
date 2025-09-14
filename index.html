@@ -116,6 +116,9 @@
             border-color: #6750A4;
             color: #6750A4;
         }
+        .sheet-item {
+            position: relative;
+        }
         .sheet-item.deactivated {
             opacity: 0.5;
             background-color: #e0e0e0;
@@ -237,6 +240,28 @@
             text-overflow: ellipsis;
             white-space: nowrap;
         }
+        /* Stili per il Superset */
+        .superset-link {
+            position: absolute;
+            bottom: -24px; /* Posiziona a metà tra due card */
+            left: 28px;   /* Allinea con la checkbox */
+            height: 24px; /* Altezza dello spazio tra le card */
+            border-left: 2px dashed #6750A4;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 10;
+        }
+        .superset-link .material-icons {
+            color: #6750A4;
+            background-color: #fffbfe;
+            padding: 2px;
+            border-radius: 50%;
+        }
+        .superset-workout-border {
+            border: 2px solid #6750A4 !important;
+            box-shadow: 0 0 8px rgba(103, 80, 164, 0.3) !important;
+        }
 
     </style>
 </head>
@@ -348,7 +373,7 @@
                            <span class="material-icons">create_new_folder</span> Contenitore
                        </button>
                         <button id="ai-generator-btn" class="material-button material-button-filled flex items-center gap-2">
-                           <span class="material-icons">auto_awesome</span> ✨ Genera con AI
+                           <span class="material-icons">auto_awesome</span> Generazione AI
                        </button>
                     </div>
                 </div>
@@ -1074,7 +1099,7 @@
             const activeHtml = renderGroup(activeContainers, activeSheets, false);
             const archivedHtml = renderGroup(archivedContainers, archivedSheets, true);
             
-            listContainer.innerHTML = activeHtml || (searchTerm === '' ? `<p class="text-center text-gray-500">Nessuna scheda o contenitore. Inizia creando una scheda o usa il ✨ generatore AI.</p>`: `<p class="text-center text-gray-500">Nessun risultato per la ricerca.</p>`);
+            listContainer.innerHTML = activeHtml || (searchTerm === '' ? `<p class="text-center text-gray-500">Nessuna scheda o contenitore. Inizia creando una scheda o usa il generatore AI.</p>`: `<p class="text-center text-gray-500">Nessun risultato per la ricerca.</p>`);
             archivedListContainer.innerHTML = archivedHtml || `<p class="text-center text-gray-500">Nessun elemento archiviato.</p>`;
             
             archivedContainer.classList.toggle('hidden', !state.showArchived);
@@ -1124,8 +1149,9 @@
             if (items.length === 0) return `<p class="text-sm text-center text-gray-400 py-2">Questa scheda è vuota. Aggiungi esercizi o pause.</p>`;
             
             return items.map((item, index) => {
+                const previousItem = index > 0 ? items[index - 1] : null;
                 switch (item.type) {
-                    case 'exercise': return renderExerciseItem(item, sheetId, index, items.length);
+                    case 'exercise': return renderExerciseItem(item, sheetId, index, items.length, previousItem);
                     case 'pause': return renderPauseItem(item, sheetId, index, items.length);
                     case 'text': return renderTextItem(item, sheetId, index, items.length);
                     default: return '';
@@ -1133,17 +1159,23 @@
             }).join('');
         }
 
-        function renderExerciseItem(item, sheetId, index, totalItems) {
+        function renderExerciseItem(item, sheetId, index, totalItems, previousItem) {
             const exerciseIds = item.exerciseIds || (item.exerciseId ? [item.exerciseId] : []);
             if (exerciseIds.length === 0) return `<div class="p-2 border rounded bg-red-100 text-red-700">Esercizio non trovato (ID: ${item.exerciseId}) <button onclick="window.app.deleteSheetItem('${sheetId}', '${item.id}')" class="text-red-700 underline ml-2">Rimuovi</button></div>`;
             
             const isWorkout = state.isWorkoutModeActive;
-
+            const isLinkedFromPrevious = previousItem && previousItem.type === 'exercise' && previousItem.isLinkedToNext;
+            const isInSuperset = item.isLinkedToNext || isLinkedFromPrevious;
+            
             return `
-                <div class="material-card p-3 flex flex-col sheet-item ${item.isDeactivated ? 'deactivated' : ''} ${item.isDone ? 'done' : ''}">
+                <div class="material-card p-3 flex flex-col sheet-item ${item.isDeactivated ? 'deactivated' : ''} ${item.isDone ? 'done' : ''} ${isInSuperset && isWorkout ? 'superset-workout-border' : ''}">
+                     ${item.isLinkedToNext ? `<div class="superset-link"><span class="material-icons text-base">link</span></div>` : ''}
                      <div class="flex flex-col">
                         <div class="flex justify-between items-center h-8 mb-1">
-                            ${!isWorkout ? `<div class="w-8"><input type="checkbox" ${item.isDone ? 'checked' : ''} onchange="window.app.toggleSheetItemDone('${sheetId}', '${item.id}', this.checked)" class="w-5 h-5 flex-shrink-0"></div>` : '<div></div>'}
+                             <div class="flex items-center gap-2">
+                                ${!isWorkout ? `<input type="checkbox" ${item.isDone ? 'checked' : ''} onchange="window.app.toggleSheetItemDone('${sheetId}', '${item.id}', this.checked)" class="w-5 h-5 flex-shrink-0 ml-2">` : ''}
+                                ${isInSuperset ? `<span class="text-xs font-bold text-white bg-purple-500 px-2 py-0.5 rounded-full ml-2">Super Set</span>` : ''}
+                            </div>
                             ${!isWorkout ? `
                                 <div class="flex items-center">
                                     ${renderReorderButtons(sheetId, item.id, index, totalItems)}
@@ -1171,14 +1203,14 @@
             <div class="relative">
                 <div class="variant-carousel-container" id="${carouselId}" data-current-index="0">
                     <div class="variant-carousel-track">
-                        ${exerciseIds.map((exId) => {
+                        ${exerciseIds.map((exId, exIndex) => {
                             const exercise = state.exercises.find(e => e.id === exId);
                             if (!exercise) return '';
                             const latestHistory = state.history
                                 .filter(h => h.exerciseId === exId && h.params)
                                 .sort((a,b) => b.timestamp.seconds - a.timestamp.seconds)[0];
                             const labelList = (labels && Array.isArray(labels[exId])) ? labels[exId] : [];
-                            const labelHtml = labelList.map(label => 
+                            const labelHtml = labelList.map((label) => 
                                 `<span class="text-xs font-medium px-2 py-1 rounded-full mr-1" style="background-color:${label.color || '#cccccc'}; color: #fff;">${label.text}</span>`
                             ).join('');
 
@@ -1189,7 +1221,7 @@
                                             <span class="font-bold text-lg cursor-pointer hover:underline" onclick="window.app.openExerciseModal('${exercise.id}')">${exercise.name}</span>
                                             ${labelHtml ? `<div class="mt-1 flex flex-wrap gap-1">${labelHtml}</div>` : ''}
                                         </div>
-                                        ${!isWorkout && exerciseIds.length > 1 && exerciseIds.indexOf(exId) > 0 ? `
+                                        ${!isWorkout && exerciseIds.length > 1 && exIndex > 0 ? `
                                             <button onclick="window.app.removeVariantFromSheetItem('${sheetId}', '${itemId}', '${exId}')" title="Rimuovi questa alternativa" class="material-button-text !p-1 !min-w-0 h-6 rounded-full text-gray-400 hover:text-red-600">
                                                 <span class="material-icons text-base">remove_circle_outline</span>
                                             </button>
@@ -1461,7 +1493,11 @@
         // --- INIZIO NUOVI MODAL PER CALENDARIO ---
         function openPlanWorkoutModal(dateISO = null) {
             const date = dateISO ? new Date(dateISO) : new Date();
-            const todayStr = date.toISOString().split('T')[0];
+            
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            const todayStr = `${year}-${month}-${day}`;
             
             let optionsHtml = '<option value="">Seleziona...</option>';
             const activeContainers = state.sheetContainers.filter(c => !c.isArchived);
@@ -2922,6 +2958,7 @@
                         order: maxOrder,
                         isDone: false,
                         isDeactivated: false,
+                        isLinkedToNext: false, // Default per superset
                         createdAt: serverTimestamp()
                     };
                     const itemRef = doc(collection(db, collectionPath));
@@ -3066,8 +3103,22 @@
         }
         
         function openSheetItemActions(sheetId, itemId) {
-            const item = (state.sheetItems[sheetId] || []).find(i => i.id === itemId);
+            const items = (state.sheetItems[sheetId] || []).sort((a,b) => a.order - b.order);
+            const itemIndex = items.findIndex(i => i.id === itemId);
+            const item = items[itemIndex];
             if (!item) return;
+
+            let supersetAction = '';
+            if (item.type === 'exercise') {
+                const nextItem = items[itemIndex + 1];
+                if (nextItem && nextItem.type === 'exercise') {
+                    if (item.isLinkedToNext) {
+                        supersetAction = `<button id="toggle-superset-btn" class="material-button material-button-text w-full justify-start">Scollega da successivo</button>`;
+                    } else {
+                        supersetAction = `<button id="toggle-superset-btn" class="material-button material-button-text w-full justify-start">Collega a successivo (Superset)</button>`;
+                    }
+                }
+            }
 
             const editAction = item.type === 'pause' || item.type === 'text' ? `
                 <button id="edit-item-btn" class="material-button material-button-text w-full justify-start">Modifica</button>` : '';
@@ -3076,7 +3127,7 @@
             const currentIndex = carousel ? parseInt(carousel.dataset.currentIndex) : 0;
             const currentExerciseId = (item.exerciseIds || (item.exerciseId ? [item.exerciseId] : []))[currentIndex];
             
-            if (!currentExerciseId) return;
+            if (!currentExerciseId && item.type === 'exercise') return;
 
             const currentExercise = state.exercises.find(ex => ex.id === currentExerciseId);
             const currentLabels = (item.labels && Array.isArray(item.labels[currentExerciseId])) ? item.labels[currentExerciseId] : [];
@@ -3103,7 +3154,7 @@
                     <div class="space-y-2 mb-4">
                     ${currentLabels.map((label, index) => `
                         <div class="flex justify-between items-center bg-gray-100 p-2 rounded">
-                            <span class="text-sm font-medium px-2 py-1 rounded-full" style="background-color:${label.color}; color: #fff;">${label.text}</span>
+                            <span onclick="window.app.openLabelEditorModal('${sheetId}', '${itemId}', '${currentExerciseId}', ${index})" class="text-sm font-medium px-2 py-1 rounded-full cursor-pointer" style="background-color:${label.color}; color: #fff;">${label.text}</span>
                             <button onclick="window.app.removeSheetItemLabel('${sheetId}', '${itemId}', '${currentExerciseId}', ${index})" class="material-button-text p-1 rounded-full"><span class="material-icons text-sm">close</span></button>
                         </div>
                     `).join('')}
@@ -3118,6 +3169,7 @@
                     <h3 class="text-xl font-medium mb-4">Azioni Elemento</h3>
                     <div class="space-y-2">
                         ${editAction}
+                        ${supersetAction}
                         <button id="toggle-deactivate-btn" class="material-button material-button-text w-full justify-start">${item.isDeactivated ? 'Riattiva' : 'Disattiva Temporaneamente'}</button>
                         <button id="delete-item-btn" class="material-button material-button-text w-full justify-start text-red-600">Elimina dalla scheda</button>
                     </div>
@@ -3130,6 +3182,9 @@
             
             if (document.getElementById('edit-item-btn')) {
                 document.getElementById('edit-item-btn').onclick = () => editSheetItem(sheetId, itemId, item.type);
+            }
+            if (document.getElementById('toggle-superset-btn')) {
+                document.getElementById('toggle-superset-btn').onclick = () => toggleSupersetLink(sheetId, itemId, !item.isLinkedToNext);
             }
             document.getElementById('toggle-deactivate-btn').onclick = () => toggleSheetItemDeactivated(sheetId, itemId, !item.isDeactivated);
             document.getElementById('delete-item-btn').onclick = () => { closeModal(); deleteSheetItem(sheetId, itemId); };
@@ -3169,10 +3224,24 @@
                 const docRef = doc(db, `/users/${userId}/workoutSheets/${sheetId}/items`, itemId);
                 const labelKey = `labels.${exerciseId}`;
                 await updateDoc(docRef, { [labelKey]: labelsArray });
-                closeModal();
+                openSheetItemActions(sheetId, itemId); // Riapre il modal delle azioni per vedere il cambiamento
             } catch(e) { console.error(e); showToast("Errore aggiornamento etichetta.", 'error'); }
         }
         
+        async function toggleSupersetLink(sheetId, itemId, shouldLink) {
+            const { userId } = state;
+            if (!userId) return;
+            try {
+                const docRef = doc(db, `/users/${userId}/workoutSheets/${sheetId}/items`, itemId);
+                await updateDoc(docRef, { isLinkedToNext: shouldLink });
+                closeModal();
+                showToast(`Collegamento superset ${shouldLink ? 'creato' : 'rimosso'}.`, 'success');
+            } catch (e) {
+                console.error("Errore collegamento superset:", e);
+                showToast("Errore durante l'aggiornamento.", 'error');
+            }
+        }
+
         function editSheetItem(sheetId, itemId, type) {
             const item = (state.sheetItems[sheetId] || []).find(i => i.id === itemId);
             if (!item) return;
@@ -3407,8 +3476,9 @@
             const contentDiv = document.getElementById('workout-item-content');
             
             let html = '';
+            const previousItem = currentItemIndex > 0 ? items[currentItemIndex-1] : null;
             switch (item.type) {
-                case 'exercise': html = renderExerciseItem(item, state.workout.sheetId, currentItemIndex, items.length); break;
+                case 'exercise': html = renderExerciseItem(item, state.workout.sheetId, currentItemIndex, items.length, previousItem); break;
                 case 'pause': html = renderPauseItem(item, state.workout.sheetId, currentItemIndex, items.length); break;
                 case 'text': html = renderTextItem(item, state.workout.sheetId, currentItemIndex, items.length); break;
             }
@@ -3795,8 +3865,60 @@
                 closeModal();
             }
         }
-
+        
         // --- NUOVE FUNZIONI AGGIUNTE ---
+        function openLabelEditorModal(sheetId, itemId, exerciseId, labelIndex) {
+            const item = (state.sheetItems[sheetId] || []).find(i => i.id === itemId);
+            if (!item) return;
+            const currentLabels = (item.labels && item.labels[exerciseId]) || [];
+            const labelToEdit = currentLabels[labelIndex];
+            if (!labelToEdit) return;
+
+            modalContainer.innerHTML = `
+                <div class="modal-content p-6 !w-auto !max-w-xs relative" onclick="event.stopPropagation()">
+                    <button onclick="window.app.closeModal()" class="absolute top-2 right-2 z-10 p-2 rounded-full material-button-text hover:bg-gray-200 !min-w-0"><span class="material-icons">close</span></button>
+                    <h3 class="text-xl font-medium mb-4">Modifica Etichetta</h3>
+                    <div class="space-y-4">
+                        <div>
+                            <label for="edit-label-text" class="text-sm font-medium">Testo</label>
+                            <input type="text" id="edit-label-text" class="input-field mt-1 !p-2" value="${labelToEdit.text}">
+                        </div>
+                        <div>
+                            <label class="text-sm font-medium">Colore</label>
+                            <input type="hidden" id="edit-label-color" value="${labelToEdit.color}">
+                            <div class="flex flex-wrap gap-2 mt-2">
+                                ${COLORS.map(c => `<div onclick="document.getElementById('edit-label-color').value='${c}'; document.querySelectorAll('.color-dot').forEach(d=>d.classList.remove('selected')); this.classList.add('selected');" class="color-dot ${labelToEdit.color === c ? 'selected' : ''}" style="background-color:${c}"></div>`).join('')}
+                            </div>
+                        </div>
+                    </div>
+                    <div class="flex justify-end gap-2 mt-6">
+                        <button onclick="window.app.closeModal()" class="material-button material-button-text">Annulla</button>
+                        <button id="save-label-edit-btn" class="material-button material-button-filled">Salva</button>
+                    </div>
+                </div>
+            `;
+
+            modalContainer.classList.remove('hidden');
+            document.getElementById('save-label-edit-btn').onclick = () => saveLabelEdit(sheetId, itemId, exerciseId, labelIndex);
+        }
+
+        function saveLabelEdit(sheetId, itemId, exerciseId, labelIndex) {
+            const item = (state.sheetItems[sheetId] || []).find(i => i.id === itemId);
+            if (!item) return;
+
+            const newText = document.getElementById('edit-label-text').value.trim();
+            const newColor = document.getElementById('edit-label-color').value;
+
+            if (!newText) {
+                return showToast("Il testo non può essere vuoto.", "error");
+            }
+
+            const allLabels = [...((item.labels && item.labels[exerciseId]) || [])];
+            allLabels[labelIndex] = { text: newText, color: newColor };
+
+            updateSheetItemLabel(sheetId, itemId, exerciseId, allLabels);
+        }
+
 
         async function showWorkoutSummary(workoutData) {
             const { startTime, endTime, sheetName, elapsedSeconds } = workoutData;
@@ -3962,13 +4084,24 @@
             const { userId } = state;
             if (!userId) return;
             
-            let collectionPath = type === 'container' ? `/users/${userId}/sheetContainers` : `/users/${userId}/workoutSheets`;
+            const collectionPath = type === 'container' ? `/users/${userId}/sheetContainers` : `/users/${userId}/workoutSheets`;
             
             try {
+                const batch = writeBatch(db);
                 const docRef = doc(db, collectionPath, id);
-                await updateDoc(docRef, { isArchived: shouldArchive });
+                batch.update(docRef, { isArchived: shouldArchive });
+                
+                if (type === 'container') {
+                    const sheetsInContainer = state.sheets.filter(s => s.containerId === id);
+                    sheetsInContainer.forEach(sheet => {
+                        const sheetRef = doc(db, `/users/${userId}/workoutSheets`, sheet.id);
+                        batch.update(sheetRef, { isArchived: shouldArchive });
+                    });
+                }
+
+                await batch.commit();
                 showToast(`Elemento ${shouldArchive ? 'archiviato' : 'ripristinato'}.`, 'success');
-            } catch(e) {
+            } catch (e) {
                 console.error(e);
                 showToast('Si è verificato un errore.', 'error');
             }
@@ -4056,6 +4189,8 @@
             removeVariantFromSheetItem,
             openVariantDbSelector,
             openVariantAiGenerator,
+            openLabelEditorModal, 
+            saveLabelEdit,         
             removeSheetItemLabel(sheetId, itemId, exerciseId, labelIndex) {
                 const item = (state.sheetItems[sheetId] || []).find(i => i.id === itemId);
                 if (!item) return;
@@ -4063,6 +4198,7 @@
                 const updatedLabels = currentLabels.filter((_, index) => index !== labelIndex);
                 updateSheetItemLabel(sheetId, itemId, exerciseId, updatedLabels);
             },
+            toggleSupersetLink,
             openSheetActionsMenu(sheetId, isArchived) {
                 const sheet = state.sheets.find(s => s.id === sheetId);
                 modalContainer.innerHTML = `<div class="modal-content p-6 !w-auto !max-w-xs relative" onclick="event.stopPropagation()">
