@@ -515,6 +515,9 @@
 
         let wakeLock = null;
         let chartInstance = null;
+
+        // *** NUOVO: Chiave per lo stato dell'allenamento in localStorage ***
+        const ACTIVE_WORKOUT_KEY = 'workoutTrackerActiveWorkout';
         
         // Stato dell'applicazione
         const state = {
@@ -3352,6 +3355,65 @@
         
         // --- LOGICA MODALITÀ ALLENAMENTO ---
         
+        // *** NUOVE FUNZIONI PER LA PERSISTENZA DELL'ALLENAMENTO ***
+        function saveActiveWorkoutState() {
+            if (!state.isWorkoutModeActive || !state.workout) return;
+            const workoutStateToSave = {
+                sheetId: state.workout.sheetId,
+                sheetName: state.workout.sheetName,
+                currentItemIndex: state.workout.currentItemIndex,
+                startTimeISO: state.workout.startTime.toISOString(),
+            };
+            localStorage.setItem(ACTIVE_WORKOUT_KEY, JSON.stringify(workoutStateToSave));
+        }
+
+        function clearActiveWorkoutState() {
+            localStorage.removeItem(ACTIVE_WORKOUT_KEY);
+        }
+        
+        async function resumeWorkout(savedState) {
+            closeModal();
+            const sheet = state.sheets.find(s => s.id === savedState.sheetId);
+            // Attendi che gli item della scheda siano caricati, potrebbero non esserlo ancora
+            if (!sheet || !state.sheetItems[savedState.sheetId]) {
+                console.warn("Dati per ripristino allenamento non ancora pronti, ritento...");
+                setTimeout(() => resumeWorkout(savedState), 500); // Riprova tra poco
+                return;
+            }
+
+            const items = (state.sheetItems[savedState.sheetId] || [])
+                .filter(item => !item.isDeactivated)
+                .sort((a,b) => a.order - b.order);
+
+            if (items.length === 0) {
+                clearActiveWorkoutState(); // Pulisce lo stato se la scheda è diventata vuota
+                return;
+            }
+            
+            await acquireWakeLock();
+            state.isWorkoutModeActive = true;
+            
+            const startTime = new Date(savedState.startTimeISO);
+
+            state.workout = {
+                sheetId: savedState.sheetId,
+                sheetName: savedState.sheetName,
+                items: items,
+                currentItemIndex: savedState.currentItemIndex,
+                startTime: startTime,
+                globalTimerIntervalId: null,
+                elapsedSeconds: Math.floor((Date.now() - startTime.getTime()) / 1000),
+            };
+            
+            document.getElementById('app-container').classList.add('hidden');
+            document.getElementById('workout-mode-container').classList.remove('hidden');
+            document.body.classList.add('overflow-hidden');
+
+            startGlobalTimer();
+            renderWorkoutStep();
+            showToast("Allenamento ripristinato.", "success");
+        }
+        
         const acquireWakeLock = async () => {
             if ('wakeLock' in navigator) {
                 try {
@@ -3444,6 +3506,9 @@
                 elapsedSeconds: 0,
             };
             
+            // *** MODIFICA: Salva lo stato iniziale ***
+            saveActiveWorkoutState();
+            
             document.getElementById('app-container').classList.add('hidden');
             document.getElementById('workout-mode-container').classList.remove('hidden');
             document.body.classList.add('overflow-hidden');
@@ -3503,6 +3568,8 @@
             if (!state.workout || state.workout.currentItemIndex >= state.workout.items.length) return;
             state.workout.currentItemIndex++;
             renderWorkoutStep();
+            // *** MODIFICA: Aggiorna lo stato salvato ***
+            saveActiveWorkoutState();
         }
         
         function workoutPrevStep() {
@@ -3514,6 +3581,8 @@
                 state.workout.currentItemIndex--;
              }
             renderWorkoutStep();
+            // *** MODIFICA: Aggiorna lo stato salvato ***
+            saveActiveWorkoutState();
         }
         
         function endWorkout() {
@@ -3533,7 +3602,7 @@
             
             const close = () => {
                 confirmModal.classList.add('hidden');
-                 document.body.classList.remove('overflow-hidden');
+                 if (!state.isWorkoutModeActive) document.body.classList.remove('overflow-hidden');
             };
 
             document.getElementById('custom-save').onclick = async () => {
@@ -3585,6 +3654,9 @@
         }
         
         async function exitWorkoutMode(navigateToHistory = true) {
+            // *** MODIFICA: Pulisce lo stato dell'allenamento ***
+            clearActiveWorkoutState();
+            
             stopGlobalTimer();
             stopAllTimers();
             
@@ -3609,9 +3681,10 @@
 
         function startGlobalTimer() {
             if (state.workout?.globalTimerIntervalId) clearInterval(state.workout.globalTimerIntervalId);
-            
-            state.workout.elapsedSeconds = 0;
-            document.getElementById('workout-global-timer').textContent = formatGlobalTime(0);
+
+            // Se stiamo riprendendo, elapsedSeconds è già calcolato. Altrimenti, inizia da 0.
+            state.workout.elapsedSeconds = state.workout.elapsedSeconds || 0;
+            document.getElementById('workout-global-timer').textContent = formatGlobalTime(state.workout.elapsedSeconds);
             
             state.workout.globalTimerIntervalId = setInterval(() => {
                 if (state.workout && state.workout.startTime) {
@@ -4138,7 +4211,7 @@
             toggleSheetItemDone, reorderSheetItem, openSheetItemActions,
             deleteSheetItem, toggleTimer, resetTimer, openContainerModal,
             toggleExpansion, reorderEntity,
-            openWorkoutSelectionModal, renderWorkoutSheetSelection, startWorkout, workoutPrevStep, exitWorkoutMode,
+            openWorkoutSelectionModal, renderWorkoutSheetSelection, startWorkout, workoutNextStep, workoutPrevStep, exitWorkoutMode,
             openPlanWorkoutModal, openDayDetailsModal, promptDeletePlannedWorkout,
             deleteWorkoutSession(sessionId) {
                 if (!sessionId) return;
@@ -4244,6 +4317,8 @@
             const { userId } = state;
             if (!userId) return;
 
+            let hasCheckedForResume = false; // Flag per eseguire il controllo una sola volta
+
             Object.keys(navs).forEach(key => {
                 navs[key].forEach(nav => nav.onclick = () => { stopAllTimers(); navigate(key); });
             });
@@ -4337,8 +4412,33 @@
                         }, e => console.error(`items listener error for sheet ${id}:`, e));
                     }
                 });
+                
                 state.sheets = newSheets;
-                render();
+
+                // *** MODIFICA: Controlla se c'è un allenamento da ripristinare ***
+                if (!hasCheckedForResume) {
+                    hasCheckedForResume = true;
+                    const savedWorkoutJSON = localStorage.getItem(ACTIVE_WORKOUT_KEY);
+                    if (savedWorkoutJSON) {
+                        try {
+                            const savedState = JSON.parse(savedWorkoutJSON);
+                            const sheetExists = newSheets.some(sh => sh.id === savedState.sheetId);
+                            if (sheetExists) {
+                                resumeWorkout(savedState);
+                                return; // Impedisce il rendering normale se si ripristina
+                            } else {
+                                clearActiveWorkoutState(); // La scheda è stata eliminata, pulisci lo stato
+                            }
+                        } catch (e) {
+                            console.error("Errore nel ripristino dell'allenamento:", e);
+                            clearActiveWorkoutState();
+                        }
+                    }
+                }
+                
+                if (!state.isWorkoutModeActive) {
+                    render();
+                }
             }, e => console.error("workoutSheets listener error:", e));
             
             document.addEventListener('visibilitychange', async () => {
@@ -4346,8 +4446,11 @@
                     await acquireWakeLock();
                 }
             });
-
-            navigate(state.currentPage);
+            
+            // Non navigare se stiamo per ripristinare un allenamento
+            if (!localStorage.getItem(ACTIVE_WORKOUT_KEY)) {
+                navigate(state.currentPage);
+            }
         }
 
         // --- LOGICA DI AUTENTICAZIONE E AVVIO ---
@@ -4425,6 +4528,7 @@
                 appContainer.classList.remove('hidden');
                 startApp();
             } else {
+                state.userId = null;
                 authContainer.classList.remove('hidden');
                 appContainer.classList.add('hidden');
             }
