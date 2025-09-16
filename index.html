@@ -289,8 +289,8 @@
     </div>
 
     <!-- ===== Contenitore Modalità Allenamento ===== -->
-    <div id="workout-mode-container" class="fixed inset-0 z-[80] bg-gray-100 flex-col p-4 hidden">
-        <div class="flex justify-between items-center mb-4">
+    <div id="workout-mode-container" class="fixed inset-0 z-[80] bg-gray-100 flex flex-col p-4 hidden h-screen">
+        <div class="flex-shrink-0 flex justify-between items-center mb-4">
             <div>
                 <h2 id="workout-sheet-name" class="text-xl font-bold">Modalità Allenamento</h2>
                 <p id="workout-step-counter" class="text-sm text-gray-600">Passaggio 1 / 10</p>
@@ -301,11 +301,11 @@
             </div>
         </div>
 
-        <div id="workout-item-content" class="flex-1 overflow-y-auto p-2 bg-white rounded-lg shadow-inner">
+        <div id="workout-item-content" class="flex-1 overflow-y-auto p-2 bg-white rounded-lg shadow-inner min-h-0">
             <!-- Contenuto del passaggio corrente verrà inserito qui -->
         </div>
 
-        <div id="workout-navigation" class="flex justify-between items-center mt-4">
+        <div id="workout-navigation" class="flex-shrink-0 flex justify-between items-center mt-4">
              <button id="workout-prev-btn" class="material-button material-button-outlined flex items-center gap-2">
                 <span class="material-icons">arrow_back</span> Precedente
             </button>
@@ -3355,13 +3355,32 @@
         
         // --- LOGICA MODALITÀ ALLENAMENTO ---
         
-        // *** NUOVE FUNZIONI PER LA PERSISTENZA DELL'ALLENAMENTO ***
+        function groupWorkoutItemsIntoSteps(items) {
+            const steps = [];
+            if (!items || items.length === 0) return steps;
+
+            for (let i = 0; i < items.length; i++) {
+                const currentItem = items[i];
+                if (currentItem.type === 'exercise' && currentItem.isLinkedToNext) {
+                    const supersetGroup = [currentItem];
+                    while (i + 1 < items.length && items[i].type === 'exercise' && items[i].isLinkedToNext) {
+                        i++;
+                        supersetGroup.push(items[i]);
+                    }
+                    steps.push(supersetGroup);
+                } else {
+                    steps.push(currentItem);
+                }
+            }
+            return steps;
+        }
+
         function saveActiveWorkoutState() {
             if (!state.isWorkoutModeActive || !state.workout) return;
             const workoutStateToSave = {
                 sheetId: state.workout.sheetId,
                 sheetName: state.workout.sheetName,
-                currentItemIndex: state.workout.currentItemIndex,
+                currentStepIndex: state.workout.currentStepIndex,
                 startTimeISO: state.workout.startTime.toISOString(),
             };
             localStorage.setItem(ACTIVE_WORKOUT_KEY, JSON.stringify(workoutStateToSave));
@@ -3374,10 +3393,9 @@
         async function resumeWorkout(savedState) {
             closeModal();
             const sheet = state.sheets.find(s => s.id === savedState.sheetId);
-            // Attendi che gli item della scheda siano caricati, potrebbero non esserlo ancora
             if (!sheet || !state.sheetItems[savedState.sheetId]) {
                 console.warn("Dati per ripristino allenamento non ancora pronti, ritento...");
-                setTimeout(() => resumeWorkout(savedState), 500); // Riprova tra poco
+                setTimeout(() => resumeWorkout(savedState), 500);
                 return;
             }
 
@@ -3385,8 +3403,10 @@
                 .filter(item => !item.isDeactivated)
                 .sort((a,b) => a.order - b.order);
 
-            if (items.length === 0) {
-                clearActiveWorkoutState(); // Pulisce lo stato se la scheda è diventata vuota
+            const steps = groupWorkoutItemsIntoSteps(items);
+
+            if (steps.length === 0) {
+                clearActiveWorkoutState();
                 return;
             }
             
@@ -3398,8 +3418,8 @@
             state.workout = {
                 sheetId: savedState.sheetId,
                 sheetName: savedState.sheetName,
-                items: items,
-                currentItemIndex: savedState.currentItemIndex,
+                steps: steps,
+                currentStepIndex: savedState.currentStepIndex,
                 startTime: startTime,
                 globalTimerIntervalId: null,
                 elapsedSeconds: Math.floor((Date.now() - startTime.getTime()) / 1000),
@@ -3493,20 +3513,21 @@
 
             if (items.length === 0) return showToast("Questa scheda è vuota!", 'error');
             
+            const steps = groupWorkoutItemsIntoSteps(items);
+
             await acquireWakeLock();
 
             state.isWorkoutModeActive = true;
             state.workout = {
                 sheetId: sheetId,
                 sheetName: sheet.name,
-                items: items,
-                currentItemIndex: 0,
+                steps: steps,
+                currentStepIndex: 0,
                 startTime: new Date(),
                 globalTimerIntervalId: null,
                 elapsedSeconds: 0,
             };
             
-            // *** MODIFICA: Salva lo stato iniziale ***
             saveActiveWorkoutState();
             
             document.getElementById('app-container').classList.add('hidden');
@@ -3519,9 +3540,9 @@
 
         function renderWorkoutStep() {
             if (!state.workout) return;
-            const { items, currentItemIndex, sheetName } = state.workout;
+            const { steps, currentStepIndex, sheetName } = state.workout;
 
-            const isFinished = currentItemIndex >= items.length;
+            const isFinished = currentStepIndex >= steps.length;
             
             document.getElementById('workout-item-content').classList.toggle('hidden', isFinished);
             document.getElementById('workout-finish-view').classList.toggle('hidden', !isFinished);
@@ -3533,28 +3554,37 @@
             }
             
             document.getElementById('workout-navigation').classList.remove('hidden');
-            const item = items[currentItemIndex];
+            const currentStep = steps[currentStepIndex];
             
             document.getElementById('workout-sheet-name').textContent = sheetName;
-            document.getElementById('workout-step-counter').textContent = `Passaggio ${currentItemIndex + 1} / ${items.length}`;
+            document.getElementById('workout-step-counter').textContent = `Passaggio ${currentStepIndex + 1} / ${steps.length}`;
 
             const contentDiv = document.getElementById('workout-item-content');
             
             let html = '';
-            const previousItem = currentItemIndex > 0 ? items[currentItemIndex-1] : null;
-            switch (item.type) {
-                case 'exercise': html = renderExerciseItem(item, state.workout.sheetId, currentItemIndex, items.length, previousItem); break;
-                case 'pause': html = renderPauseItem(item, state.workout.sheetId, currentItemIndex, items.length); break;
-                case 'text': html = renderTextItem(item, state.workout.sheetId, currentItemIndex, items.length); break;
+            if (Array.isArray(currentStep)) {
+                html = '<div class="space-y-3">';
+                currentStep.forEach((item, index) => {
+                    const previousItem = index > 0 ? currentStep[index - 1] : null;
+                    html += renderExerciseItem(item, state.workout.sheetId, index, currentStep.length, previousItem);
+                });
+                html += '</div>';
+            } else {
+                const item = currentStep;
+                switch (item.type) {
+                    case 'exercise': html = renderExerciseItem(item, state.workout.sheetId, 0, 1, null); break;
+                    case 'pause': html = renderPauseItem(item, state.workout.sheetId, 0, 1); break;
+                    case 'text': html = renderTextItem(item, state.workout.sheetId, 0, 1); break;
+                }
             }
             contentDiv.innerHTML = html;
             
             const prevBtn = document.getElementById('workout-prev-btn');
             const nextBtn = document.getElementById('workout-next-btn');
 
-            prevBtn.disabled = currentItemIndex === 0;
+            prevBtn.disabled = currentStepIndex === 0;
 
-            const isLastStep = currentItemIndex === items.length - 1;
+            const isLastStep = currentStepIndex === steps.length - 1;
             if (isLastStep) {
                 nextBtn.innerHTML = `Termina <span class="material-icons">flag</span>`;
                 nextBtn.classList.add('!bg-green-600');
@@ -3565,23 +3595,21 @@
         }
         
         function workoutNextStep() {
-            if (!state.workout || state.workout.currentItemIndex >= state.workout.items.length) return;
-            state.workout.currentItemIndex++;
+            if (!state.workout || state.workout.currentStepIndex >= state.workout.steps.length) return;
+            state.workout.currentStepIndex++;
             renderWorkoutStep();
-            // *** MODIFICA: Aggiorna lo stato salvato ***
             saveActiveWorkoutState();
         }
         
         function workoutPrevStep() {
-             if (!state.workout || state.workout.currentItemIndex < 0) return;
+             if (!state.workout || state.workout.currentStepIndex < 0) return;
              
-             if (state.workout.currentItemIndex >= state.workout.items.length) {
-                 state.workout.currentItemIndex = state.workout.items.length - 1;
+             if (state.workout.currentStepIndex >= state.workout.steps.length) {
+                 state.workout.currentStepIndex = state.workout.steps.length - 1;
              } else {
-                state.workout.currentItemIndex--;
+                state.workout.currentStepIndex--;
              }
             renderWorkoutStep();
-            // *** MODIFICA: Aggiorna lo stato salvato ***
             saveActiveWorkoutState();
         }
         
@@ -3654,7 +3682,6 @@
         }
         
         async function exitWorkoutMode(navigateToHistory = true) {
-            // *** MODIFICA: Pulisce lo stato dell'allenamento ***
             clearActiveWorkoutState();
             
             stopGlobalTimer();
@@ -4402,9 +4429,10 @@
                          state.listeners[id] = onSnapshot(query(collection(db, `${basePath}/workoutSheets/${id}/items`)), (snapshot) => {
                             state.sheetItems[id] = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                             if(state.isWorkoutModeActive && state.workout?.sheetId === id) {
-                                state.workout.items = state.sheetItems[id]
+                                const items = state.sheetItems[id]
                                     .filter(item => !item.isDeactivated)
                                     .sort((a,b) => a.order - b.order);
+                                state.workout.steps = groupWorkoutItemsIntoSteps(items);
                                 renderWorkoutStep(); 
                             } else if (state.currentPage === 'sheets') {
                                 render();
