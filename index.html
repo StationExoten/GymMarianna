@@ -306,13 +306,15 @@
         </div>
 
         <div id="workout-navigation" class="flex-shrink-0 flex justify-between items-center mt-4">
-             <button id="workout-prev-btn" class="material-button material-button-outlined flex items-center gap-2">
-                <span class="material-icons">arrow_back</span> Precedente
-            </button>
-             <button id="workout-next-btn" class="material-button material-button-filled flex items-center gap-2">
-                Successivo <span class="material-icons">arrow_forward</span>
-            </button>
-        </div>
+          <button id="workout-prev-btn" class="material-button material-button-outlined flex items-center gap-2">
+              <span class="material-icons">arrow_back</span>
+              <span class="hidden md:inline">Precedente</span>
+          </button>
+          <button id="workout-next-btn" class="material-button material-button-filled flex items-center gap-2">
+              <span class="hidden md:inline">Successivo</span>
+              <span class="material-icons">arrow_forward</span>
+          </button>
+      </div>
          <div id="workout-finish-view" class="hidden flex-1 flex-col items-center justify-center text-center p-8">
             <span class="material-icons text-6xl text-green-500">check_circle</span>
             <h3 class="text-2xl font-bold mt-4">Allenamento Completato!</h3>
