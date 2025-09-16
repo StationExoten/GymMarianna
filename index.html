@@ -263,6 +263,26 @@
             box-shadow: 0 0 8px rgba(103, 80, 164, 0.3) !important;
         }
 
+/* ===== INIZIO: Stili per Animazione Slide Allenamento ===== */
+#workout-mode-container {
+    overflow-x: hidden; /* Impedisce la comparsa della scrollbar orizzontale durante l'animazione */
+}
+
+.workout-slide-transition {
+    transition: transform 0.3s ease-in-out, opacity 0.2s ease-in-out;
+}
+
+.slide-out-left {
+    transform: translateX(-100%);
+    opacity: 0;
+}
+
+.slide-out-right {
+    transform: translateX(100%);
+    opacity: 0;
+}
+/* ===== FINE: Stili per Animazione Slide Allenamento ===== */
+
     </style>
 </head>
 <body class="antialiased">
@@ -3597,6 +3617,54 @@
             }
         }
         
+        function animateWorkoutStepChange(direction) {
+            if (!state.workout) return;
+
+            const contentDiv = document.getElementById('workout-item-content');
+            const isGoingNext = direction === 'next';
+            const isAtLastStep = state.workout.currentStepIndex === state.workout.steps.length - 1;
+            const isFinished = state.workout.currentStepIndex >= state.workout.steps.length;
+
+            // Non animare se si va all'ultimo step o se si torna indietro dalla schermata finale
+            if ((isGoingNext && isAtLastStep) || (!isGoingNext && isFinished)) {
+                if(isGoingNext) workoutNextStep(); else workoutPrevStep();
+                return;
+            }
+
+            const outClass = isGoingNext ? 'slide-out-left' : 'slide-out-right';
+            const inClass = isGoingNext ? 'slide-out-right' : 'slide-out-left';
+            const animationDuration = 300; // Deve corrispondere alla durata della transizione CSS
+
+            // 1. Applica la transizione e fai scorrere via il contenuto
+            contentDiv.classList.add('workout-slide-transition', outClass);
+
+            // 2. Dopo l'animazione di uscita, cambia il contenuto
+            setTimeout(() => {
+                // Aggiorna l'indice e salva lo stato
+                if (isGoingNext) {
+                    state.workout.currentStepIndex++;
+                } else {
+                    state.workout.currentStepIndex--;
+                }
+                saveActiveWorkoutState();
+                
+                // Renderizza il nuovo contenuto
+                renderWorkoutStep();
+
+                // 3. Prepara il contenuto per l'ingresso (posizionalo fuori schermo senza animazione)
+                contentDiv.classList.remove('workout-slide-transition');
+                contentDiv.classList.add(inClass);
+
+                // Forza il browser a registrare la nuova posizione
+                void contentDiv.offsetWidth;
+
+                // 4. Riattiva l'animazione e fallo scorrere al centro
+                contentDiv.classList.add('workout-slide-transition');
+                contentDiv.classList.remove(inClass, outClass);
+
+            }, animationDuration);
+        }
+
         function workoutNextStep() {
             if (!state.workout || state.workout.currentStepIndex >= state.workout.steps.length) return;
             state.workout.currentStepIndex++;
@@ -3615,6 +3683,10 @@
             renderWorkoutStep();
             saveActiveWorkoutState();
         }
+
+        // Ora aggiorna i gestori degli eventi dei pulsanti per usare la nuova funzione con animazione
+        document.getElementById('workout-next-btn').onclick = () => animateWorkoutStepChange('next');
+        document.getElementById('workout-prev-btn').onclick = () => animateWorkoutStepChange('prev');
         
         function endWorkout() {
             document.getElementById('confirm-title').innerText = 'Termina Allenamento';
@@ -4365,8 +4437,8 @@
             document.getElementById('next-month-btn').onclick = () => { state.calendarDate = dateFns.addMonths(state.calendarDate, 1); renderCalendarPage(); };
 
             document.getElementById('workout-fab').onclick = openWorkoutSelectionModal;
-            document.getElementById('workout-next-btn').onclick = workoutNextStep;
-            document.getElementById('workout-prev-btn').onclick = workoutPrevStep;
+            document.getElementById('workout-next-btn').onclick = () => animateWorkoutStepChange('next');
+            document.getElementById('workout-prev-btn').onclick = () => animateWorkoutStepChange('prev');
             document.getElementById('end-workout-btn-header').onclick = endWorkout;
             document.getElementById('end-workout-btn-final').onclick = finishAndSaveWorkout;
             
