@@ -507,6 +507,10 @@
     <div id="toast-container" class="fixed bottom-24 md:bottom-8 right-1/2 translate-x-1/2 z-[100] space-y-2"></div>
     <!-- ===== ELEMENTI SPOSTATI QUI (FINE) ===== -->
 
+    <!-- ===== INIZIO: Elemento audio per Media Session API ===== -->
+    <audio id="silent-audio" loop src="data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA="></audio>
+    <!-- ===== FINE: Elemento audio per Media Session API ===== -->
+
 
     <script type="module">
         // Importa le funzioni di Firebase
@@ -594,6 +598,88 @@
         }
 
         // --- INIZIO FUNZIONALITÀ PRINCIPALI ---
+
+        // ===== INIZIO: Gestione Media Session API =====
+        const mediaSessionManager = {
+            start: () => {
+                if (!('mediaSession' in navigator)) return;
+                
+                const silentAudio = document.getElementById('silent-audio');
+                silentAudio.play().catch(e => console.log("Riproduzione audio bloccata dal browser.", e));
+
+                navigator.mediaSession.setActionHandler('previoustrack', () => {
+                    if (state.workout.currentStepIndex > 0) {
+                        animateWorkoutStepChange('prev');
+                    }
+                });
+                navigator.mediaSession.setActionHandler('nexttrack', () => {
+                     if (state.workout.currentStepIndex < state.workout.steps.length) {
+                        animateWorkoutStepChange('next');
+                    }
+                });
+                navigator.mediaSession.setActionHandler('play', () => {
+                    const timerButton = document.querySelector('#workout-item-content button[onclick*="toggleTimer"]');
+                    if (timerButton) timerButton.click();
+                });
+                 navigator.mediaSession.setActionHandler('pause', () => {
+                    const timerButton = document.querySelector('#workout-item-content button[onclick*="toggleTimer"]');
+                    if (timerButton) timerButton.click();
+                });
+            },
+            update: () => {
+                if (!('mediaSession' in navigator) || !state.isWorkoutModeActive) return;
+
+                const { steps, currentStepIndex, sheetName } = state.workout;
+                let metadata = {
+                    title: 'Allenamento',
+                    artist: sheetName,
+                    album: 'Workout Tracker',
+                    artwork: [{ src: 'https://fonts.gstatic.com/s/i/short-term/release/googlesymbols/fitness_center/default/48px.svg', sizes: '96x96', type: 'image/svg+xml' }]
+                };
+
+                if (currentStepIndex >= steps.length) {
+                    metadata.title = "Allenamento Completato!";
+                    metadata.album = "Ottimo lavoro!";
+                } else {
+                    const currentStep = steps[currentStepIndex];
+                    metadata.album = `Passaggio ${currentStepIndex + 1} / ${steps.length}`;
+
+                    if (Array.isArray(currentStep)) {
+                        metadata.title = "Super Set: " + currentStep.map(item => {
+                             const exercise = state.exercises.find(e => e.id === (item.exerciseIds?.[0] || item.exerciseId));
+                             return exercise?.name || 'Esercizio';
+                        }).join(' + ');
+                    } else {
+                        switch(currentStep.type) {
+                            case 'exercise':
+                                const exercise = state.exercises.find(e => e.id === (currentStep.exerciseIds?.[0] || currentStep.exerciseId));
+                                metadata.title = exercise?.name || 'Esercizio';
+                                break;
+                            case 'pause':
+                                metadata.title = `Pausa: ${formatTime(currentStep.duration)}`;
+                                break;
+                            case 'text':
+                                metadata.title = `Nota: ${currentStep.text}`;
+                                break;
+                        }
+                    }
+                }
+                
+                navigator.mediaSession.metadata = new MediaMetadata(metadata);
+            },
+            stop: () => {
+                 if (!('mediaSession' in navigator)) return;
+                 const silentAudio = document.getElementById('silent-audio');
+                 silentAudio.pause();
+                 navigator.mediaSession.metadata = null;
+                 navigator.mediaSession.playbackState = 'none';
+                 navigator.mediaSession.setActionHandler('previoustrack', null);
+                 navigator.mediaSession.setActionHandler('nexttrack', null);
+                 navigator.mediaSession.setActionHandler('play', null);
+                 navigator.mediaSession.setActionHandler('pause', null);
+            }
+        };
+        // ===== FINE: Gestione Media Session API =====
 
         function navigate(page) {
             state.currentPage = page;
@@ -3334,11 +3420,13 @@
             if (state.timers[timerId]?.intervalId) {
                 clearInterval(state.timers[timerId].intervalId);
                 state.timers[timerId].intervalId = null;
+                if ('mediaSession' in navigator) navigator.mediaSession.playbackState = "paused";
             } else { 
                 if (!state.timers[timerId]) {
                     state.timers[timerId] = { remaining: duration, isFinished: false };
                 }
                 state.timers[timerId].isFinished = false;
+                if ('mediaSession' in navigator) navigator.mediaSession.playbackState = "playing";
                 state.timers[timerId].intervalId = setInterval(() => {
                     state.timers[timerId].remaining--;
                     const timerEl = document.getElementById(timerId);
@@ -3347,6 +3435,7 @@
                         clearInterval(state.timers[timerId].intervalId);
                         state.timers[timerId].intervalId = null;
                         state.timers[timerId].isFinished = true;
+                        if ('mediaSession' in navigator) navigator.mediaSession.playbackState = "paused";
                         if (timerEl) timerEl.classList.add('blinking');
                     }
                 }, 1000);
@@ -3355,13 +3444,6 @@
              else {
                  const playPauseButton = document.querySelector(`#workout-item-content button[onclick*="toggleTimer"] span`);
                  if(playPauseButton) playPauseButton.textContent = state.timers[timerId]?.intervalId ? 'pause' : 'play_arrow';
-                 
-                 // --- INIZIO INTEGRAZIONE SMARTWATCH ---
-                 // Aggiorna lo stato play/pausa del media player per lo smartwatch
-                 if ('mediaSession' in navigator) {
-                     navigator.mediaSession.playbackState = state.timers[timerId]?.intervalId ? 'playing' : 'paused';
-                 }
-                 // --- FINE INTEGRAZIONE SMARTWATCH ---
              }
         }
 
@@ -3371,6 +3453,7 @@
                 clearInterval(state.timers[timerId].intervalId);
             }
             state.timers[timerId] = { remaining: duration, intervalId: null, isFinished: false };
+             if ('mediaSession' in navigator) navigator.mediaSession.playbackState = "paused";
             const timerEl = document.getElementById(timerId);
             if(timerEl) {
                 timerEl.innerText = formatTime(duration);
@@ -3384,81 +3467,6 @@
         }
         
         // --- LOGICA MODALITÀ ALLENAMENTO ---
-        
-        // --- INIZIO INTEGRAZIONE SMARTWATCH ---
-        function updateWatchMediaSession() {
-            if (!('mediaSession' in navigator) || !state.isWorkoutModeActive || !state.workout) {
-                return;
-            }
-
-            const { steps, currentStepIndex } = state.workout;
-            const isFinished = currentStepIndex >= steps.length;
-
-            if (isFinished) {
-                clearWatchMediaSession();
-                return;
-            }
-
-            const currentStep = steps[currentStepIndex];
-            let title = "Pausa";
-            let artist = ""; // Usato per serie/ripetizioni o dettagli
-
-            const itemsInStep = Array.isArray(currentStep) ? currentStep : [currentStep];
-            const exerciseItems = itemsInStep.filter(item => item.type === 'exercise');
-
-            if (exerciseItems.length > 0) {
-                title = exerciseItems.map(item => {
-                    // ==================== INIZIO CODICE CORRETTO ====================
-                    // Gestisce sia la vecchia struttura dati (exerciseId) che la nuova (exerciseIds)
-                    const exerciseIds = item.exerciseIds || (item.exerciseId ? [item.exerciseId] : []);
-                    const firstExId = exerciseIds[0];
-                    // ===================== FINE CODICE CORRETTO =====================
-                    return state.exercises.find(e => e.id === firstExId)?.name || 'Esercizio';
-                }).join(' + ');
-                
-                // Cerca un elemento di testo *successivo* per ottenere serie/ripetizioni
-                const nextStep = steps[currentStepIndex + 1];
-                if (nextStep && !Array.isArray(nextStep) && nextStep.type === 'text') {
-                    artist = nextStep.text;
-                }
-            } else if (!Array.isArray(currentStep)) {
-                if (currentStep.type === 'pause') {
-                    title = "Pausa";
-                    artist = formatTime(currentStep.duration);
-                } else if (currentStep.type === 'text') {
-                    title = "Nota";
-                    artist = currentStep.text;
-                }
-            }
-            
-            navigator.mediaSession.metadata = new MediaMetadata({
-                title: title,
-                artist: artist,
-                album: state.workout.sheetName,
-            });
-
-            // Se c'è un timer nel passo corrente, adatta lo stato di play/pausa
-            const pauseItem = itemsInStep.find(item => item.type === 'pause');
-            if(pauseItem) {
-                const timerId = `timer-${pauseItem.id}`;
-                const isRunning = state.timers[timerId]?.intervalId;
-                navigator.mediaSession.playbackState = isRunning ? 'playing' : 'paused';
-            } else {
-                navigator.mediaSession.playbackState = "playing"; // Stato di default se non ci sono timer
-            }
-        }
-        
-        function clearWatchMediaSession() {
-            if ('mediaSession' in navigator) {
-                navigator.mediaSession.metadata = null;
-                navigator.mediaSession.playbackState = "none";
-                navigator.mediaSession.setActionHandler('previoustrack', null);
-                navigator.mediaSession.setActionHandler('nexttrack', null);
-                navigator.mediaSession.setActionHandler('play', null);
-                navigator.mediaSession.setActionHandler('pause', null);
-            }
-        }
-        // --- FINE INTEGRAZIONE SMARTWATCH ---
         
         function groupWorkoutItemsIntoSteps(items) {
             const steps = [];
@@ -3534,26 +3542,7 @@
             document.getElementById('workout-mode-container').classList.remove('hidden');
             document.body.classList.add('overflow-hidden');
 
-            // --- INIZIO INTEGRAZIONE SMARTWATCH ---
-            // Imposta gli handler una volta sola
-            if ('mediaSession' in navigator) {
-                navigator.mediaSession.setActionHandler('previoustrack', () => animateWorkoutStepChange('prev'));
-                navigator.mediaSession.setActionHandler('nexttrack', () => animateWorkoutStepChange('next'));
-                navigator.mediaSession.setActionHandler('play', () => {
-                    const step = state.workout.steps[state.workout.currentStepIndex];
-                    const itemsInStep = Array.isArray(step) ? step : [step];
-                    const pauseItem = itemsInStep.find(item => item.type === 'pause');
-                    if(pauseItem) toggleTimer(pauseItem.id, pauseItem.duration);
-                });
-                navigator.mediaSession.setActionHandler('pause', () => {
-                     const step = state.workout.steps[state.workout.currentStepIndex];
-                    const itemsInStep = Array.isArray(step) ? step : [step];
-                    const pauseItem = itemsInStep.find(item => item.type === 'pause');
-                    if(pauseItem) toggleTimer(pauseItem.id, pauseItem.duration);
-                });
-            }
-            // --- FINE INTEGRAZIONE SMARTWATCH ---
-            
+            mediaSessionManager.start(); // NUOVO
             startGlobalTimer();
             renderWorkoutStep();
             showToast("Allenamento ripristinato.", "success");
@@ -3658,27 +3647,8 @@
             document.getElementById('app-container').classList.add('hidden');
             document.getElementById('workout-mode-container').classList.remove('hidden');
             document.body.classList.add('overflow-hidden');
-
-            // --- INIZIO INTEGRAZIONE SMARTWATCH ---
-            // Imposta gli handler una volta sola
-            if ('mediaSession' in navigator) {
-                navigator.mediaSession.setActionHandler('previoustrack', () => animateWorkoutStepChange('prev'));
-                navigator.mediaSession.setActionHandler('nexttrack', () => animateWorkoutStepChange('next'));
-                navigator.mediaSession.setActionHandler('play', () => {
-                    const step = state.workout.steps[state.workout.currentStepIndex];
-                    const itemsInStep = Array.isArray(step) ? step : [step];
-                    const pauseItem = itemsInStep.find(item => item.type === 'pause');
-                    if(pauseItem) toggleTimer(pauseItem.id, pauseItem.duration);
-                });
-                navigator.mediaSession.setActionHandler('pause', () => {
-                     const step = state.workout.steps[state.workout.currentStepIndex];
-                    const itemsInStep = Array.isArray(step) ? step : [step];
-                    const pauseItem = itemsInStep.find(item => item.type === 'pause');
-                    if(pauseItem) toggleTimer(pauseItem.id, pauseItem.duration);
-                });
-            }
-            // --- FINE INTEGRAZIONE SMARTWATCH ---
-
+            
+            mediaSessionManager.start(); // NUOVO
             startGlobalTimer();
             renderWorkoutStep();
         }
@@ -3695,7 +3665,7 @@
             if (isFinished) {
                 document.getElementById('workout-step-counter').textContent = "Completato!";
                 document.getElementById('workout-navigation').classList.add('hidden');
-                updateWatchMediaSession(); // Per pulire la sessione
+                mediaSessionManager.update(); // NUOVO: Aggiorna la media session allo stato finale
                 return;
             }
             
@@ -3738,10 +3708,8 @@
                 nextBtn.innerHTML = `Successivo <span class="material-icons">arrow_forward</span>`;
                 nextBtn.classList.remove('!bg-green-600');
             }
-            
-            // --- INIZIO INTEGRAZIONE SMARTWATCH ---
-            updateWatchMediaSession();
-            // --- FINE INTEGRAZIONE SMARTWATCH ---
+
+            mediaSessionManager.update(); // NUOVO: Aggiorna la media session ad ogni step
         }
         
         function animateWorkoutStepChange(direction) {
@@ -3886,14 +3854,11 @@
         }
         
         async function exitWorkoutMode(navigateToHistory = true) {
-            // --- INIZIO INTEGRAZIONE SMARTWATCH ---
-            clearWatchMediaSession();
-            // --- FINE INTEGRAZIONE SMARTWATCH ---
-
             clearActiveWorkoutState();
             
             stopGlobalTimer();
             stopAllTimers();
+            mediaSessionManager.stop(); // NUOVO
             
             await releaseWakeLock();
 
