@@ -639,27 +639,35 @@
 
                 if (currentStepIndex >= steps.length) {
                     metadata.title = "Allenamento Completato!";
-                    metadata.album = "Ottimo lavoro!";
+                    metadata.artist = "Ottimo lavoro!";
+                    metadata.album = sheetName;
                 } else {
                     const currentStep = steps[currentStepIndex];
                     metadata.album = `Passaggio ${currentStepIndex + 1} / ${steps.length}`;
 
-                    if (Array.isArray(currentStep)) {
+                    if (Array.isArray(currentStep)) { // Superset
                         metadata.title = "Super Set: " + currentStep.map(item => {
                              const exercise = state.exercises.find(e => e.id === (item.exerciseIds?.[0] || item.exerciseId));
                              return exercise?.name || 'Esercizio';
                         }).join(' + ');
-                    } else {
+                        const firstExerciseId = currentStep[0].exerciseIds?.[0] || currentStep[0].exerciseId;
+                        metadata.artist = getCompactPerformanceString(firstExerciseId);
+
+                    } else { // Singolo elemento
                         switch(currentStep.type) {
                             case 'exercise':
-                                const exercise = state.exercises.find(e => e.id === (currentStep.exerciseIds?.[0] || currentStep.exerciseId));
+                                const exerciseId = currentStep.exerciseIds?.[0] || currentStep.exerciseId;
+                                const exercise = state.exercises.find(e => e.id === exerciseId);
                                 metadata.title = exercise?.name || 'Esercizio';
+                                metadata.artist = getCompactPerformanceString(exerciseId);
                                 break;
                             case 'pause':
                                 metadata.title = `Pausa: ${formatTime(currentStep.duration)}`;
+                                metadata.artist = "Prepara il prossimo esercizio.";
                                 break;
                             case 'text':
                                 metadata.title = `Nota: ${currentStep.text}`;
+                                metadata.artist = sheetName;
                                 break;
                         }
                     }
@@ -1419,6 +1427,36 @@
         }
         
         // --- FUNZIONI UTILITY ---
+
+        // NUOVA FUNZIONE HELPER per la Media Session
+        function getCompactPerformanceString(exerciseId) {
+            if (!exerciseId) return null;
+
+            const exercise = state.exercises.find(e => e.id === exerciseId);
+            if (!exercise || !exercise.parameters || exercise.parameters.length === 0) {
+                return "Nessun parametro da tracciare";
+            }
+
+            const latestHistory = state.history
+                .filter(h => h.exerciseId === exercise.id && h.params)
+                .sort((a, b) => b.timestamp.seconds - a.timestamp.seconds)[0];
+
+            if (!latestHistory) {
+                return "Nessun dato precedente";
+            }
+
+            const paramsStrings = exercise.parameters.map(paramName => {
+                const paramData = latestHistory.params?.[paramName];
+                if (paramData?.value) {
+                    return `${paramName}: ${renderCompoundParam(paramData.value)}`;
+                }
+                return null;
+            }).filter(Boolean);
+
+            return paramsStrings.length > 0 ? paramsStrings.join(' | ') : "Nessun dato precedente";
+        }
+
+
         function getComparisonArrow(newValueJSON, oldValueJSON) {
             if (!newValueJSON || !oldValueJSON) return '';
             try {
@@ -3542,7 +3580,7 @@
             document.getElementById('workout-mode-container').classList.remove('hidden');
             document.body.classList.add('overflow-hidden');
 
-            mediaSessionManager.start(); // NUOVO
+            mediaSessionManager.start(); 
             startGlobalTimer();
             renderWorkoutStep();
             showToast("Allenamento ripristinato.", "success");
@@ -3648,7 +3686,7 @@
             document.getElementById('workout-mode-container').classList.remove('hidden');
             document.body.classList.add('overflow-hidden');
             
-            mediaSessionManager.start(); // NUOVO
+            mediaSessionManager.start(); 
             startGlobalTimer();
             renderWorkoutStep();
         }
@@ -3665,7 +3703,7 @@
             if (isFinished) {
                 document.getElementById('workout-step-counter').textContent = "Completato!";
                 document.getElementById('workout-navigation').classList.add('hidden');
-                mediaSessionManager.update(); // NUOVO: Aggiorna la media session allo stato finale
+                mediaSessionManager.update(); 
                 return;
             }
             
@@ -3709,7 +3747,7 @@
                 nextBtn.classList.remove('!bg-green-600');
             }
 
-            mediaSessionManager.update(); // NUOVO: Aggiorna la media session ad ogni step
+            mediaSessionManager.update(); 
         }
         
         function animateWorkoutStepChange(direction) {
@@ -3858,7 +3896,7 @@
             
             stopGlobalTimer();
             stopAllTimers();
-            mediaSessionManager.stop(); // NUOVO
+            mediaSessionManager.stop(); 
             
             await releaseWakeLock();
 
