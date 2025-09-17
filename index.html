@@ -632,8 +632,8 @@
                 const { steps, currentStepIndex, sheetName } = state.workout;
                 let metadata = {
                     title: 'Allenamento',
-                    artist: sheetName,
-                    album: 'Workout Tracker',
+                    artist: '',
+                    album: '',
                     artwork: [{ src: 'https://fonts.gstatic.com/s/i/short-term/release/googlesymbols/fitness_center/default/48px.svg', sizes: '96x96', type: 'image/svg+xml' }]
                 };
 
@@ -644,7 +644,7 @@
                 } else {
                     const currentStep = steps[currentStepIndex];
                     metadata.album = `Passaggio ${currentStepIndex + 1} / ${steps.length}`;
-
+                    
                     if (Array.isArray(currentStep)) { // Superset
                         metadata.title = "Super Set: " + currentStep.map(item => {
                              const exercise = state.exercises.find(e => e.id === (item.exerciseIds?.[0] || item.exerciseId));
@@ -658,8 +658,27 @@
                             case 'exercise':
                                 const exerciseId = currentStep.exerciseIds?.[0] || currentStep.exerciseId;
                                 const exercise = state.exercises.find(e => e.id === exerciseId);
+                                const fullPerformanceString = getCompactPerformanceString(exerciseId);
+                                
                                 metadata.title = exercise?.name || 'Esercizio';
-                                metadata.artist = getCompactPerformanceString(exerciseId);
+                                
+                                // ===== MODIFICA INIZIO: Nuova strategia per visualizzare i parametri =====
+                                if (fullPerformanceString && fullPerformanceString !== "Nessun dato precedente" && fullPerformanceString !== "Nessun parametro da tracciare") {
+                                    const paramsParts = fullPerformanceString.split(' | ');
+                                    // Combina il nome dell'esercizio con il primo parametro nel titolo per massima visibilità
+                                    metadata.title += ` - ${paramsParts[0]}`; 
+                                    
+                                    // Mette i parametri rimanenti nel campo 'artist'
+                                    if (paramsParts.length > 1) {
+                                        metadata.artist = paramsParts.slice(1).join(' | ');
+                                    } else {
+                                        metadata.artist = `Passaggio ${currentStepIndex + 1} / ${steps.length}`; // Fallback se c'è un solo parametro
+                                    }
+                                } else {
+                                    // Comportamento di default se non ci sono parametri
+                                    metadata.artist = fullPerformanceString;
+                                }
+                                // ===== MODIFICA FINE =====
                                 break;
                             case 'pause':
                                 metadata.title = `Pausa: ${formatTime(currentStep.duration)}`;
@@ -3661,11 +3680,17 @@
 
             const items = (state.sheetItems[sheetId] || [])
                 .filter(item => !item.isDeactivated)
-                .sort((a,b) => a.order - b.order);
+                .sort((a, b) => a.order - b.order);
 
             if (items.length === 0) return showToast("Questa scheda è vuota!", 'error');
-            
+
             const steps = groupWorkoutItemsIntoSteps(items);
+
+            // ===== MODIFICA INIZIO: Risoluzione bug iOS Media Session =====
+            // Avvia la Media Session e la riproduzione dell'audio *immediatamente*
+            // al tocco dell'utente, prima di qualsiasi 'await'.
+            mediaSessionManager.start();
+            // ===== MODIFICA FINE =====
 
             await acquireWakeLock();
 
@@ -3679,14 +3704,14 @@
                 globalTimerIntervalId: null,
                 elapsedSeconds: 0,
             };
-            
+
             saveActiveWorkoutState();
-            
+
             document.getElementById('app-container').classList.add('hidden');
             document.getElementById('workout-mode-container').classList.remove('hidden');
             document.body.classList.add('overflow-hidden');
-            
-            mediaSessionManager.start(); 
+
+            // La chiamata a mediaSessionManager.start() è stata spostata sopra
             startGlobalTimer();
             renderWorkoutStep();
         }
