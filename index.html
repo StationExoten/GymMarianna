@@ -601,12 +601,29 @@
 
         // ===== INIZIO: Gestione Media Session API =====
         const mediaSessionManager = {
-            start: () => {
-                if (!('mediaSession' in navigator)) return;
-                
-                const silentAudio = document.getElementById('silent-audio');
-                silentAudio.play().catch(e => console.log("Riproduzione audio bloccata dal browser.", e));
+          start: () => {
+                if (!('mediaSession' in navigator)) {
+                    // Restituisce una promessa risolta se l'API non è supportata
+                    return Promise.resolve();
+                }
 
+                const silentAudio = document.getElementById('silent-audio');
+                const playPromise = silentAudio.play();
+
+                if (playPromise !== undefined) {
+                    playPromise.then(() => {
+                        // Successo! L'audio è partito.
+                        console.log("Audio playback initiated successfully for Media Session.");
+                        navigator.mediaSession.playbackState = "playing";
+                    }).catch(error => {
+                        // Questo log è FONDAMENTALE per il debug su iOS
+                        console.error("Audio playback was blocked by the browser.", error);
+                        // Non impostiamo gli handler se l'audio non parte
+                        return; 
+                    });
+                }
+
+                // Impostiamo gli handler immediatamente
                 navigator.mediaSession.setActionHandler('previoustrack', () => {
                     if (state.workout.currentStepIndex > 0) {
                         animateWorkoutStepChange('prev');
@@ -625,6 +642,9 @@
                     const timerButton = document.querySelector('#workout-item-content button[onclick*="toggleTimer"]');
                     if (timerButton) timerButton.click();
                 });
+                
+                // Restituiamo la promessa per poterla attendere
+                return playPromise;
             },
             update: () => {
                 if (!('mediaSession' in navigator) || !state.isWorkoutModeActive) return;
@@ -3577,49 +3597,63 @@
                 </div>
             `;
             
-            document.getElementById('begin-workout-btn').onclick = () => window.app.beginWorkoutFromPreScreen(sheetId);
+            // MODIFICA: Usiamo addEventListener invece di .onclick per maggiore robustezza
+            document.getElementById('begin-workout-btn').addEventListener('click', () => {
+                window.app.beginWorkoutFromPreScreen(sheetId)
+            });
 
             modalContainer.classList.remove('hidden');
             document.body.classList.add('overflow-hidden');
         }
 
         async function beginWorkoutFromPreScreen(sheetId) {
-            // Fase 1: Avviare la riproduzione audio come primissima azione dopo il click.
-            mediaSessionManager.start();
+            try {
+                // Fase 1: Chiamare la funzione start e ATTENDERE che la promessa di play() sia gestita.
+                // Questo è il passaggio fondamentale che dovrebbe risolvere il problema su iOS.
+                await mediaSessionManager.start();
 
-            // Fase 2: Chiudere il modal per dare un feedback immediato all'utente.
-            closeModal();
-            
-            const sheet = state.sheets.find(s => s.id === sheetId);
-            const items = (state.sheetItems[sheetId] || [])
-                .filter(item => !item.isDeactivated)
-                .sort((a, b) => a.order - b.order);
-            const steps = groupWorkoutItemsIntoSteps(items);
+                // Se arriviamo qui, l'audio è partito (o l'API non è supportata, il che va bene).
+                // Ora possiamo procedere con il resto della logica.
 
-            // Fase 3: Eseguire operazioni asincrone e setup pesante
-            await acquireWakeLock();
+                // Fase 2: Chiudere il modal per dare un feedback immediato all'utente.
+                closeModal();
+                
+                const sheet = state.sheets.find(s => s.id === sheetId);
+                const items = (state.sheetItems[sheetId] || [])
+                    .filter(item => !item.isDeactivated)
+                    .sort((a, b) => a.order - b.order);
+                const steps = groupWorkoutItemsIntoSteps(items);
 
-            state.isWorkoutModeActive = true;
-            state.workout = {
-                sheetId: sheetId,
-                sheetName: sheet.name,
-                steps: steps,
-                currentStepIndex: 0,
-                startTime: new Date(),
-                globalTimerIntervalId: null,
-                elapsedSeconds: 0,
-            };
+                // Fase 3: Eseguire operazioni asincrone e setup pesante
+                await acquireWakeLock();
 
-            saveActiveWorkoutState();
+                state.isWorkoutModeActive = true;
+                state.workout = {
+                    sheetId: sheetId,
+                    sheetName: sheet.name,
+                    steps: steps,
+                    currentStepIndex: 0,
+                    startTime: new Date(),
+                    globalTimerIntervalId: null,
+                    elapsedSeconds: 0,
+                };
 
-            // Fase 4: Modificare la UI principale
-            document.getElementById('app-container').classList.add('hidden');
-            document.getElementById('workout-mode-container').classList.remove('hidden');
-            document.body.classList.add('overflow-hidden');
+                saveActiveWorkoutState();
 
-            // Fase 5: Avviare timer e rendering
-            startGlobalTimer();
-            renderWorkoutStep();
+                // Fase 4: Modificare la UI principale
+                document.getElementById('app-container').classList.add('hidden');
+                document.getElementById('workout-mode-container').classList.remove('hidden');
+                document.body.classList.add('overflow-hidden');
+
+                // Fase 5: Avviare timer e rendering
+                startGlobalTimer();
+                renderWorkoutStep();
+
+            } catch (error) {
+                // Questo blocco verrà eseguito se la promessa di play() viene rifiutata.
+                console.error("Non è stato possibile avviare l'allenamento perché la riproduzione audio è stata negata.", error);
+                showToast("Impossibile avviare l'audio per il controllo multimediale.", "error");
+            }
         }
         // ===== FINE NUOVE FUNZIONI PER AVVIO SU IOS =====
 
