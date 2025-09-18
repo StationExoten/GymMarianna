@@ -3556,6 +3556,73 @@
             localStorage.setItem(ACTIVE_WORKOUT_KEY, JSON.stringify(workoutStateToSave));
         }
 
+                // ===== INIZIO NUOVE FUNZIONI PER AVVIO SU IOS =====
+                function showPreWorkoutScreen(sheetId) {
+            const sheet = state.sheets.find(s => s.id === sheetId);
+            if (!sheet) return showToast("Scheda non trovata", 'error');
+
+            const items = (state.sheetItems[sheetId] || []).filter(item => !item.isDeactivated);
+            if (items.length === 0) return showToast("Questa scheda è vuota!", 'error');
+
+            modalContainer.innerHTML = `
+                <div class="modal-content p-8 text-center relative" onclick="event.stopPropagation()">
+                    <button onclick="window.app.closeModal()" class="absolute top-4 right-4 z-10 p-2 rounded-full material-button-text hover:bg-gray-200 !min-w-0"><span class="material-icons">close</span></button>
+                    <h3 class="text-lg text-gray-600 mb-1">Sei pronto per iniziare?</h3>
+                    <p class="text-2xl font-bold mb-6">${sheet.name}</p>
+                    <button id="begin-workout-btn" class="material-button material-button-filled !bg-green-600 !text-lg !px-12 !py-4 transform hover:scale-105 transition-transform flex items-center justify-center gap-3 mx-auto">
+                        <span class="material-icons text-3xl">play_arrow</span>
+                        INIZIA
+                    </button>
+                    <p class="text-xs text-gray-400 mt-6">Premendo "Inizia" attiverai il player multimediale per controllare l'allenamento.</p>
+                </div>
+            `;
+            
+            document.getElementById('begin-workout-btn').onclick = () => window.app.beginWorkoutFromPreScreen(sheetId);
+
+            modalContainer.classList.remove('hidden');
+            document.body.classList.add('overflow-hidden');
+        }
+
+        async function beginWorkoutFromPreScreen(sheetId) {
+            // Fase 1: Avviare la riproduzione audio come primissima azione dopo il click.
+            mediaSessionManager.start();
+
+            // Fase 2: Chiudere il modal per dare un feedback immediato all'utente.
+            closeModal();
+            
+            const sheet = state.sheets.find(s => s.id === sheetId);
+            const items = (state.sheetItems[sheetId] || [])
+                .filter(item => !item.isDeactivated)
+                .sort((a, b) => a.order - b.order);
+            const steps = groupWorkoutItemsIntoSteps(items);
+
+            // Fase 3: Eseguire operazioni asincrone e setup pesante
+            await acquireWakeLock();
+
+            state.isWorkoutModeActive = true;
+            state.workout = {
+                sheetId: sheetId,
+                sheetName: sheet.name,
+                steps: steps,
+                currentStepIndex: 0,
+                startTime: new Date(),
+                globalTimerIntervalId: null,
+                elapsedSeconds: 0,
+            };
+
+            saveActiveWorkoutState();
+
+            // Fase 4: Modificare la UI principale
+            document.getElementById('app-container').classList.add('hidden');
+            document.getElementById('workout-mode-container').classList.remove('hidden');
+            document.body.classList.add('overflow-hidden');
+
+            // Fase 5: Avviare timer e rendering
+            startGlobalTimer();
+            renderWorkoutStep();
+        }
+        // ===== FINE NUOVE FUNZIONI PER AVVIO SU IOS =====
+
         function clearActiveWorkoutState() {
             localStorage.removeItem(ACTIVE_WORKOUT_KEY);
         }
@@ -3674,50 +3741,12 @@
         }
 
         async function startWorkout(sheetId) {
-            // Fase 1: Controlli preliminari (nessuna modifica al DOM)
-            const sheet = state.sheets.find(s => s.id === sheetId);
-            if (!sheet) return showToast("Scheda non trovata", 'error');
-
-            const items = (state.sheetItems[sheetId] || [])
-                .filter(item => !item.isDeactivated)
-                .sort((a, b) => a.order - b.order);
-
-            if (items.length === 0) return showToast("Questa scheda è vuota!", 'error');
-
-            const steps = groupWorkoutItemsIntoSteps(items);
-
-            // ===== MODIFICA CHIAVE PER iOS =====
-            // Fase 2: Avviare la riproduzione audio come primissima azione dopo i controlli
-            mediaSessionManager.start();
-
-            // Fase 3: Chiudere il modal immediatamente dopo, per dare feedback all'utente
-            closeModal();
-
-            // Fase 4: Eseguire operazioni asincrone e setup pesante
-            await acquireWakeLock();
-
-            state.isWorkoutModeActive = true;
-            state.workout = {
-                sheetId: sheetId,
-                sheetName: sheet.name,
-                steps: steps,
-                currentStepIndex: 0,
-                startTime: new Date(),
-                globalTimerIntervalId: null,
-                elapsedSeconds: 0,
-            };
-
-            saveActiveWorkoutState();
-
-            // Fase 5: Modificare la UI principale
-            document.getElementById('app-container').classList.add('hidden');
-            document.getElementById('workout-mode-container').classList.remove('hidden');
-            document.body.classList.add('overflow-hidden');
-
-            // Fase 6: Avviare timer e rendering
-            startGlobalTimer();
-            renderWorkoutStep();
+            // Ora questa funzione ha un solo scopo: mostrare la schermata pre-allenamento.
+            // Tutta la logica di avvio è stata spostata in beginWorkoutFromPreScreen.
+            showPreWorkoutScreen(sheetId);
         }
+
+        
 
         function renderWorkoutStep() {
             if (!state.workout) return;
@@ -4446,9 +4475,13 @@
             }
         }
 
-        // --- SETUP INIZIALE ---
+                // --- SETUP INIZIALE ---
         
-        window.app = {
+                window.app = {
+            // Aggiungiamo qui le due nuove funzioni
+            beginWorkoutFromPreScreen,
+            showPreWorkoutScreen,
+
             closeModal, openCategoryModal, deleteCategory, openExerciseModal, deleteExercise,
             openAddHistoryModal, deleteHistoryItem,
             addParameterField() {
