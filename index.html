@@ -508,7 +508,7 @@
     <!-- ===== ELEMENTI SPOSTATI QUI (FINE) ===== -->
 
     <!-- ===== INIZIO: Elemento audio per Media Session API ===== -->
-    <audio id="silent-audio" loop src="data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA="></audio>
+    <audio id="silent-audio" loop src="data:audio/wav;base64,UklGRooAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YSCgAAAAgAIAAEwBAA=="></audio>
     <!-- ===== FINE: Elemento audio per Media Session API ===== -->
 
 
@@ -3588,26 +3588,21 @@
                 const silentAudio = document.getElementById('silent-audio');
                 
                 try {
-                    // Chiamata DIRETTA e IMMEDIATA a .play() dentro il gestore del click
+                    console.log("DEBUG: Step 1 - Attempting to play audio...");
                     await silentAudio.play();
-
-                    // Successo! L'audio sta suonando.
-                    console.log("Audio playback initiated by user action. Proceeding with workout.");
+                    console.log("DEBUG: Step 2 - Audio playback successful.");
                     
-                    // Impostiamo lo stato di riproduzione per il sistema
                     if ('mediaSession' in navigator) {
                         navigator.mediaSession.playbackState = "playing";
                     }
 
-                    // Ora che l'audio è partito, possiamo avviare il resto della logica.
+                    console.log("DEBUG: Step 3 - Calling beginWorkoutFromPreScreen...");
                     await window.app.beginWorkoutFromPreScreen(sheetId);
+                    console.log("DEBUG: Step 4 - beginWorkoutFromPreScreen finished.");
 
                 } catch (error) {
-                    // Errore! iOS ha bloccato la riproduzione.
                     console.error("Audio playback was blocked by the browser. Cannot start workout with media controls.", error);
                     showToast("Impossibile avviare l'audio per il controllo multimediale.", "error");
-                    
-                    // Riabilita il pulsante e chiudi il modal per permettere all'utente di riprovare
                     closeModal(); 
                 }
             });
@@ -3708,6 +3703,12 @@
         }
         
         const acquireWakeLock = async () => {
+            // ===== MODIFICA PER DEBUG SU IOS =====
+            // Commentiamo temporaneamente la logica del Wake Lock per verificare se è la causa del blocco.
+            // Se l'allenamento ora parte, sappiamo che dobbiamo rendere questa funzione più robusta.
+            console.log("Wake Lock logic skipped for debugging.");
+            return Promise.resolve(); 
+            /*
             if ('wakeLock' in navigator) {
                 try {
                     wakeLock = await navigator.wakeLock.request('screen');
@@ -3715,6 +3716,7 @@
                     console.log('Wake Lock is active');
                 } catch (err) { console.error(`${err.name}, ${err.message}`); }
             } else { console.log('Wake Lock API not supported.'); }
+            */
         };
 
         const releaseWakeLock = async () => {
