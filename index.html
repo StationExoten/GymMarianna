@@ -3674,7 +3674,7 @@
         }
 
         async function startWorkout(sheetId) {
-            closeModal();
+            // Fase 1: Controlli preliminari (nessuna modifica al DOM)
             const sheet = state.sheets.find(s => s.id === sheetId);
             if (!sheet) return showToast("Scheda non trovata", 'error');
 
@@ -3686,12 +3686,14 @@
 
             const steps = groupWorkoutItemsIntoSteps(items);
 
-            // ===== MODIFICA INIZIO: Risoluzione bug iOS Media Session =====
-            // Avvia la Media Session e la riproduzione dell'audio *immediatamente*
-            // al tocco dell'utente, prima di qualsiasi 'await'.
+            // ===== MODIFICA CHIAVE PER iOS =====
+            // Fase 2: Avviare la riproduzione audio come primissima azione dopo i controlli
             mediaSessionManager.start();
-            // ===== MODIFICA FINE =====
 
+            // Fase 3: Chiudere il modal immediatamente dopo, per dare feedback all'utente
+            closeModal();
+
+            // Fase 4: Eseguire operazioni asincrone e setup pesante
             await acquireWakeLock();
 
             state.isWorkoutModeActive = true;
@@ -3707,11 +3709,12 @@
 
             saveActiveWorkoutState();
 
+            // Fase 5: Modificare la UI principale
             document.getElementById('app-container').classList.add('hidden');
             document.getElementById('workout-mode-container').classList.remove('hidden');
             document.body.classList.add('overflow-hidden');
 
-            // La chiamata a mediaSessionManager.start() è stata spostata sopra
+            // Fase 6: Avviare timer e rendering
             startGlobalTimer();
             renderWorkoutStep();
         }
