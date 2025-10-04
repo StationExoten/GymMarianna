@@ -536,6 +536,13 @@
         const db = getFirestore(app);
         const auth = getAuth(app);
 
+        const NativeBridge = window.AndroidBridge || {
+    startWorkout: (json) => console.log("Bridge (fallback): Allenamento iniziato", json),
+    updateStep: (json) => console.log("Bridge (fallback): Step aggiornato", json),
+    endWorkout: () => console.log("Bridge (fallback): Allenamento terminato")
+};
+
+
         let wakeLock = null;
         let chartInstance = null;
 
@@ -3551,6 +3558,16 @@
                 elapsedSeconds: 0,
             };
             
+            try {
+    const startData = {
+        sheetName: state.workout.sheetName,
+        totalSteps: state.workout.steps.length
+    };
+    NativeBridge.startWorkout(JSON.stringify(startData));
+} catch (e) {
+    console.error("Errore nell'invio a NativeBridge (startWorkout):", e);
+}
+
             saveActiveWorkoutState();
             
             document.getElementById('app-container').classList.add('hidden');
@@ -3573,7 +3590,13 @@
             if (isFinished) {
                 document.getElementById('workout-step-counter').textContent = "Completato!";
                 document.getElementById('workout-navigation').classList.add('hidden');
-                return;
+                // Aggiungiamo la chiamata al bridge anche qui, per lo stato "finito"
+                try {
+                    NativeBridge.updateStep(JSON.stringify({ type: 'finished' }));
+                } catch (e) {
+                    console.error("Errore nell'invio a NativeBridge (finished state):", e);
+                }
+                return; // Esce dalla funzione
             }
             
             document.getElementById('workout-navigation').classList.remove('hidden');
@@ -3615,6 +3638,49 @@
                 nextBtn.innerHTML = `Successivo <span class="material-icons">arrow_forward</span>`;
                 nextBtn.classList.remove('!bg-green-600');
             }
+
+            // ======================================================================
+            // ====> INCOLLA IL NUOVO BLOCCO DI CODICE ESATTAMENTE QUI <====
+            // ======================================================================
+            try {
+                const { steps, currentStepIndex } = state.workout;
+                let stepInfo;
+
+                if (currentStepIndex >= steps.length) {
+                    // Questo caso è ora gestito all'inizio della funzione,
+                    // ma lo lasciamo per sicurezza.
+                    stepInfo = { type: 'finished' };
+                } else {
+                    const currentStep = steps[currentStepIndex];
+                    stepInfo = {
+                        type: Array.isArray(currentStep) ? 'superset' : currentStep.type,
+                        stepNumber: currentStepIndex + 1,
+                        totalSteps: steps.length,
+                        items: []
+                    };
+
+                    const itemsToProcess = Array.isArray(currentStep) ? currentStep : [currentStep];
+                    
+                    itemsToProcess.forEach(item => {
+                        if (item.type === 'exercise') {
+                            const exerciseId = (item.exerciseIds && item.exerciseIds.length > 0) ? item.exerciseIds[0] : null;
+                            const exercise = state.exercises.find(e => e.id === exerciseId);
+                            stepInfo.items.push({ type: 'exercise', name: exercise?.name || 'Esercizio sconosciuto' });
+                        } else if (item.type === 'pause') {
+                            stepInfo.items.push({ type: 'pause', duration: item.duration });
+                        } else if (item.type === 'text') {
+                            stepInfo.items.push({ type: 'text', text: item.text });
+                        }
+                    });
+                }
+                NativeBridge.updateStep(JSON.stringify(stepInfo));
+            } catch (e) {
+                console.error("Errore nell'invio a NativeBridge (updateStep):", e);
+            }
+            // ======================================================================
+            // ====> FINE DEL BLOCCO DA INCOLLARE <====
+            // ======================================================================
+
         }
         
         function animateWorkoutStepChange(direction) {
@@ -3759,6 +3825,7 @@
         }
         
         async function exitWorkoutMode(navigateToHistory = true) {
+            NativeBridge.endWorkout();
             clearActiveWorkoutState();
             
             stopGlobalTimer();
